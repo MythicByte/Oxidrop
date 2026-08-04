@@ -1,0 +1,18 @@
+[package]
+name = "oxidrop-ebpf"
+version = "0.1.0"
+edition.workspace = true
+
+[dependencies]
+oxidrop-common = { path = "../oxidrop-common" }
+
+aya-ebpf = { workspace = true }
+aya-log-ebpf = { workspace = true }
+network-types = { workspace = true }
+
+[build-dependencies]
+which = { workspace = true }
+
+[[bin]]
+name = "oxidrop"
+path = "src/main.rs"
