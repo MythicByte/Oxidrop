@@ -13,7 +13,6 @@ use aya_ebpf::{
     programs::XdpContext,
 };
 use aya_log_ebpf::info;
-use ipnet::IpNet;
 use network_types::{
     eth::{EthHdr, EtherType},
     ip::{Ipv4Hdr, Ipv6Hdr},
@@ -36,8 +35,10 @@ static PACKET_COUNTS: LruPerCpuHashMap<SocketAddr, u64> =
 #[map]
 static BLOCKED_EVENTS: RingBuf = RingBuf::with_byte_size(256 * 1024, 0);
 /// for checking if a subnet is allowed
+///
+/// # Fix bool placeholder
 #[map]
-static SUBNET_MATCHING: LpmTrie<IpNet, Action> = LpmTrie::with_max_entries(2048, 0);
+static SUBNET_MATCHING: LpmTrie<bool, Action> = LpmTrie::with_max_entries(2048, 0);
 
 #[xdp]
 pub fn oxidrop(ctx: XdpContext) -> u32 {
