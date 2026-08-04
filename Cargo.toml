@@ -1,5 +1,5 @@
 [workspace]
-resolver = "2"
+resolver = "3"
 members = [
     "oxidrop",
     "oxidrop-common",
@@ -24,12 +24,12 @@ cargo_metadata = { version = "0.23.0", default-features = false }
 #
 # See https://github.com/clap-rs/clap/blob/61f5ee5/clap_builder/src/lib.rs#L15.
 clap = { version = "4.5.20", default-features = false, features = ["std"] }
-env_logger = { version = "0.11.5", default-features = false }
 libc = { version = "0.2.159", default-features = false }
-log = { version = "0.4.22", default-features = false }
 tokio = { version = "1.40.0", default-features = false }
 which = { version = "6.0.0", default-features = false }
 network-types = "0.2.0"
+tracing = "0.1.44"
+tracing-subscriber = { version = "0.3.22", features = ["local-time"] }
 
 [profile.release.package.oxidrop-ebpf]
 debug = 2

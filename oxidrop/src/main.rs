@@ -2,8 +2,9 @@ use anyhow::Context as _;
 use aya::programs::{Xdp, XdpMode};
 use clap::Parser;
 #[rustfmt::skip]
-use log::{ warn};
 use tokio::signal;
+use tracing::{Level, info, warn};
+use tracing_subscriber::FmtSubscriber;
 
 #[derive(Debug, Parser)]
 struct Opt {
@@ -15,7 +16,15 @@ struct Opt {
 async fn main() -> anyhow::Result<()> {
     let opt = Opt::parse();
 
-    env_logger::init();
+    let subscriber = FmtSubscriber::builder()
+        .with_max_level(Level::INFO)
+        .finish();
+    // set gloab default
+    tracing::subscriber::set_global_default(subscriber)
+        .expect("Tracing Subscriber failed to setup");
+
+    info!("Application ist starting");
+    // env_logger::init();
 
 
     // This will include your eBPF object file as raw bytes at compile-time and load it at
