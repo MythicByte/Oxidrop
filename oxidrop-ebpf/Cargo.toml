@@ -5,10 +5,10 @@ edition.workspace = true
 
 [dependencies]
 oxidrop-common = { path = "../oxidrop-common" }
-
 aya-ebpf = { workspace = true }
 aya-log-ebpf = { workspace = true }
 network-types = { workspace = true }
+ipnet = { workspace = true }
 
 [build-dependencies]
 which = { workspace = true }
