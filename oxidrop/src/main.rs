@@ -1,17 +1,29 @@
-pub mod router;
 pub mod auth;
+pub mod router;
 use anyhow::Context as _;
-use axum::{Router, routing::get};
-use aya::programs::{Xdp, XdpMode};
+use axum::{
+    Router,
+    routing::get,
+};
+use aya::programs::{
+    Xdp,
+    XdpMode,
+};
 use clap::Parser;
 use tokio::net::UnixListener;
 #[rustfmt::skip]
 use tokio::signal;
-use tracing::{Level, info, warn};
-use tracing_subscriber::FmtSubscriber;
 use hyper::server::conn::http1;
-use hyper_util::{rt::TokioIo, service::TowerToHyperService};
-
+use hyper_util::{
+    rt::TokioIo,
+    service::TowerToHyperService,
+};
+use tracing::{
+    Level,
+    info,
+    warn,
+};
+use tracing_subscriber::FmtSubscriber;
 
 #[derive(Debug, Parser)]
 struct Opt {
@@ -36,7 +48,6 @@ async fn main() -> anyhow::Result<()> {
         .expect("Tracing Subscriber failed to setup");
 
     info!("Application ist starting");
-
 
     // This will include your eBPF object file as raw bytes at compile-time and load it at
     // runtime. This approach is recommended for most real-world use cases. If you would
@@ -63,22 +74,21 @@ async fn main() -> anyhow::Result<()> {
             });
         }
     }
-    let Opt { iface,socket_path } = opt;
+    let Opt { iface, socket_path } = opt;
     let program: &mut Xdp = ebpf.program_mut("oxidrop").unwrap().try_into()?;
     program.load()?;
     program.attach(&iface, XdpMode::default())
         .context("failed to attach the XDP program with default mode - try changing XdpMode::default() to XdpMode::Skb")?;
     info!("XDP program attached to {}", &iface);
 
-        let app = Router::new()
-        .route("/", get(|| async { "Oxidrop eBPF is running\n" }));
-        let socket_path = socket_path.clone();
+    let app = Router::new().route("/", get(|| async { "Oxidrop eBPF is running\n" }));
+    let socket_path = socket_path.clone();
     // Remove old socket file if it exists (safety check omitted for brevity)
     let _ = std::fs::remove_file(&socket_path);
     let listener = UnixListener::bind(&socket_path)?;
     info!("Axum server listening on {}", socket_path);
-        // Spawn the HTTP server as a background task
-        let server_task = tokio::spawn(async move {
+    // Spawn the HTTP server as a background task
+    let server_task = tokio::spawn(async move {
         loop {
             match listener.accept().await {
                 Ok((stream, _addr)) => {
@@ -101,10 +111,6 @@ async fn main() -> anyhow::Result<()> {
         }
     });
 
-
-
-
-
     let ctrl_c = signal::ctrl_c();
     info!("Waiting for Ctrl-C...");
     ctrl_c.await?;
@@ -113,4 +119,3 @@ async fn main() -> anyhow::Result<()> {
 
     Ok(())
 }
-

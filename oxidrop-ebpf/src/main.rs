@@ -3,19 +3,35 @@
 
 use core::{
     mem,
-    net::{IpAddr, SocketAddr},
+    net::{
+        IpAddr,
+        SocketAddr,
+    },
 };
 
 use aya_ebpf::{
     bindings::xdp_action,
-    macros::{map, xdp},
-    maps::{LpmTrie, LruPerCpuHashMap, RingBuf},
+    macros::{
+        map,
+        xdp,
+    },
+    maps::{
+        LpmTrie,
+        LruPerCpuHashMap,
+        RingBuf,
+    },
     programs::XdpContext,
 };
 use aya_log_ebpf::info;
 use network_types::{
-    eth::{EthHdr, EtherType},
-    ip::{Ipv4Hdr, Ipv6Hdr},
+    eth::{
+        EthHdr,
+        EtherType,
+    },
+    ip::{
+        Ipv4Hdr,
+        Ipv6Hdr,
+    },
     udp::UdpHdr,
 };
 use oxidrop_common::Action;
