@@ -47,3 +47,6 @@ oxidrop-ebpf = { path = "../oxidrop-ebpf" }
 [[bin]]
 name = "oxidrop"
 path = "src/main.rs"
+
+[lints]
+workspace = true
