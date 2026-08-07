@@ -59,7 +59,7 @@ async fn main() -> anyhow::Result<()> {
                 tokio::io::unix::AsyncFd::with_interest(logger, tokio::io::Interest::READABLE)?;
             tokio::task::spawn(async move {
                 loop {
-                    let mut guard = logger.readable_mut().await.unwrap();
+                    let mut guard = logger.readable_mut().await.expect("eBPF guard failed");
                     guard.get_inner_mut().flush();
                     guard.clear_ready();
                 }
@@ -67,7 +67,10 @@ async fn main() -> anyhow::Result<()> {
         }
     }
     let Opt { iface, http_port } = opt;
-    let program: &mut Xdp = ebpf.program_mut("oxidrop").unwrap().try_into()?;
+    let program: &mut Xdp = ebpf
+        .program_mut("oxidrop")
+        .expect("Getting the eBPF failed")
+        .try_into()?;
     program.load()?;
     program.attach(&iface, XdpMode::default())
         .context("failed to attach the XDP program with default mode - try changing XdpMode::default() to XdpMode::Skb")?;
@@ -75,7 +78,9 @@ async fn main() -> anyhow::Result<()> {
 
     let app = Router::new().route("/", get(|| async { "Oxidrop eBPF is running\n" }));
     let addr = format!("127.0.0.1:{}", http_port);
-    let listener = tokio::net::TcpListener::bind(&addr).await.unwrap();
+    let listener = tokio::net::TcpListener::bind(&addr)
+        .await
+        .expect("Listener for axum failed to setup");
     info!("Server running on port {http_port}");
 
     axum::serve(listener, app)
@@ -86,7 +91,7 @@ async fn main() -> anyhow::Result<()> {
             info!("Ctrl-C received, starting graceful shutdown...");
         })
         .await
-        .unwrap();
+        .expect("Axum failed");
 
     Ok(())
 }
