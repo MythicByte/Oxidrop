@@ -19,12 +19,14 @@ use tracing::{
 use tracing_subscriber::FmtSubscriber;
 
 #[derive(Debug, Parser)]
+#[command(arg_required_else_help = true)]
 struct Opt {
-    /// interface name
+    /// internet interface name
     #[clap(short, long, default_value = "eth0")]
     iface: String,
 
-    #[clap(short, long, default_value_t = 3000)]
+    /// choose http port
+    #[clap(long, default_value_t = 3000)]
     http_port: u16,
 }
 
