@@ -10,14 +10,7 @@ use aya::programs::{
     XdpMode,
 };
 use clap::Parser;
-use tokio::net::UnixListener;
 #[rustfmt::skip]
-use tokio::signal;
-use hyper::server::conn::http1;
-use hyper_util::{
-    rt::TokioIo,
-    service::TowerToHyperService,
-};
 use tracing::{
     Level,
     info,
@@ -31,9 +24,8 @@ struct Opt {
     #[clap(short, long, default_value = "eth0")]
     iface: String,
 
-    /// Path for the Unix socket (e.g., /tmp/oxidrop.sock)
-    #[clap(long, default_value = "/tmp/oxidrop.sock")]
-    socket_path: String,
+    #[clap(short, long, default_value_t = 3000)]
+    http_port: u16,
 }
 
 #[tokio::main]
@@ -74,7 +66,7 @@ async fn main() -> anyhow::Result<()> {
             });
         }
     }
-    let Opt { iface, socket_path } = opt;
+    let Opt { iface, http_port } = opt;
     let program: &mut Xdp = ebpf.program_mut("oxidrop").unwrap().try_into()?;
     program.load()?;
     program.attach(&iface, XdpMode::default())
@@ -82,40 +74,19 @@ async fn main() -> anyhow::Result<()> {
     info!("XDP program attached to {}", &iface);
 
     let app = Router::new().route("/", get(|| async { "Oxidrop eBPF is running\n" }));
-    let socket_path = socket_path.clone();
-    // Remove old socket file if it exists (safety check omitted for brevity)
-    let _ = std::fs::remove_file(&socket_path);
-    let listener = UnixListener::bind(&socket_path)?;
-    info!("Axum server listening on {}", socket_path);
-    // Spawn the HTTP server as a background task
-    let server_task = tokio::spawn(async move {
-        loop {
-            match listener.accept().await {
-                Ok((stream, _addr)) => {
-                    let app = app.clone();
-                    tokio::spawn(async move {
-                        let io = TokioIo::new(stream);
-                        // Wrap `app` with TowerToHyperService::new(...)
-                        if let Err(err) = http1::Builder::new()
-                            .serve_connection(io, TowerToHyperService::new(app))
-                            .await
-                        {
-                            warn!("Connection error: {:?}", err);
-                        }
-                    });
-                }
-                Err(e) => {
-                    warn!("Accept error: {e}");
-                }
-            }
-        }
-    });
+    let addr = format!("127.0.0.1:{}", http_port);
+    let listener = tokio::net::TcpListener::bind(&addr).await.unwrap();
+    info!("Server running on port {http_port}");
 
-    let ctrl_c = signal::ctrl_c();
-    info!("Waiting for Ctrl-C...");
-    ctrl_c.await?;
-    server_task.abort();
-    info!("Exiting...");
+    axum::serve(listener, app)
+        .with_graceful_shutdown(async {
+            tokio::signal::ctrl_c()
+                .await
+                .expect("Failed to listen for ctrl-c");
+            info!("Ctrl-C received, starting graceful shutdown...");
+        })
+        .await
+        .unwrap();
 
     Ok(())
 }
