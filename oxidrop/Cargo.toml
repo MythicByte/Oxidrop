@@ -7,6 +7,12 @@ license.workspace = true
 
 [dependencies]
 oxidrop-common = { path = "../oxidrop-common", features = ["user"] }
+tower-sessions = "0.15.0"
+clap = { version = "4.5.20", default-features = false, features = ["std","help","error-context","color","derive"] }
+axum = "0.8.9"
+hyper = "1.10.1"
+hyper-util = "0.1.20"
+tracing-subscriber = { version = "0.3.22", features = ["local-time"] }
 
 anyhow = { workspace = true, default-features = true }
 aya = { workspace = true }
@@ -19,12 +25,7 @@ tokio = { workspace = true, features = [
     "net",
     "signal",
 ] }
-clap = { workspace = true, features = ["derive"] }
 tracing = { workspace = true }
-tracing-subscriber = { workspace = true }
-axum = { workspace = true }
-hyper = { workspace = true}
-hyper-util = { workspace = true}
 
 [build-dependencies]
 anyhow = { workspace = true }
