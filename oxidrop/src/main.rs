@@ -1,3 +1,5 @@
+pub mod router;
+pub mod auth;
 use anyhow::Context as _;
 use axum::{Router, routing::get};
 use aya::programs::{Xdp, XdpMode};
