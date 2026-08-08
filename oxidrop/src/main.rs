@@ -1,15 +1,17 @@
 pub mod auth;
 pub mod router;
 use anyhow::Context as _;
-use axum::{
-    Router,
-    routing::get,
-};
 use aya::programs::{
     Xdp,
     XdpMode,
 };
 use clap::Parser;
+use tower_sessions::{
+    Expiry,
+    MemoryStore,
+    SessionManagerLayer,
+    cookie::time::Duration,
+};
 #[rustfmt::skip]
 use tracing::{
     Level,
@@ -17,6 +19,8 @@ use tracing::{
     warn,
 };
 use tracing_subscriber::FmtSubscriber;
+
+use crate::router::combined_router;
 
 #[derive(Debug, Parser)]
 #[command(arg_required_else_help = true)]
@@ -78,7 +82,12 @@ async fn main() -> anyhow::Result<()> {
         .context("failed to attach the XDP program with default mode - try changing XdpMode::default() to XdpMode::Skb")?;
     info!("XDP program attached to {}", &iface);
 
-    let app = Router::new().route("/", get(|| async { "Oxidrop eBPF is running\n" }));
+    let session_store = MemoryStore::default();
+    let session_layer = SessionManagerLayer::new(session_store)
+        .with_secure(cfg!(not(debug_assertions))) // secure in debug off
+        .with_expiry(Expiry::OnInactivity(Duration::minutes(10)));
+
+    let app = combined_router().layer(session_layer);
     let addr = format!("127.0.0.1:{}", http_port);
     let listener = tokio::net::TcpListener::bind(&addr)
         .await
