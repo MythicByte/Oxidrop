@@ -1,3 +1,9 @@
+use std::{
+    env,
+    path::PathBuf,
+    process::Command,
+};
+
 use anyhow::{
     Context as _,
     anyhow,
@@ -26,5 +32,26 @@ fn main() -> anyhow::Result<()> {
             .as_str(),
         ..Default::default()
     };
-    aya_build::build_ebpf([ebpf_package], Toolchain::default())
+    aya_build::build_ebpf([ebpf_package], Toolchain::default())?;
+
+    // frontend fresh build
+    // Find the frontend directory relative to the current crate (oxidrop)
+    let manifest_dir = env::var("CARGO_MANIFEST_DIR").context("CARGO_MANIFEST_DIR not set")?;
+    let frontend_dir = PathBuf::from(manifest_dir)
+        .parent()
+        .unwrap()
+        .join("frontend");
+
+    // Execute `deno task build` in the frontend directory
+    let status = Command::new("deno")
+        .arg("task")
+        .arg("build")
+        .current_dir(&frontend_dir)
+        .status()
+        .context("Failed to execute 'deno task build'")?;
+
+    if !status.success() {
+        return Err(anyhow!("Frontend build failed with exit code: {}", status));
+    }
+    Ok(())
 }
