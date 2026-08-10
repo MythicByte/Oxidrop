@@ -34,7 +34,10 @@ use network_types::{
     },
     udp::UdpHdr,
 };
-use oxidrop_common::Action;
+use oxidrop_common::{
+    Action,
+    FirewallError,
+};
 
 /// Allow List, on this block bool is ignored
 /// first ip and port, and then the packet counter
@@ -78,33 +81,41 @@ unsafe fn ptr_at<T>(ctx: &XdpContext, offset: usize) -> Result<*const T, ()> {
     Ok((start + offset) as *const T)
 }
 
-fn xdp_firewall(ctx: XdpContext) -> Result<u32, ()> {
-    let ethhdr: *const EthHdr = unsafe { ptr_at(&ctx, 0)? };
+fn xdp_firewall(ctx: XdpContext) -> Result<u32, FirewallError> {
+    let ethhdr: *const EthHdr = unsafe { ptr_at(&ctx, 0).map_err(|_| FirewallError::OutOfBounds)? };
     let socket = match unsafe { *ethhdr }.ether_type() {
         Ok(EtherType::Ipv4) => {
-            let ipv4hdr: *const Ipv4Hdr = unsafe { ptr_at(&ctx, EthHdr::LEN)? };
+            let ipv4hdr: *const Ipv4Hdr =
+                unsafe { ptr_at(&ctx, EthHdr::LEN).map_err(|_| FirewallError::OutOfBounds)? };
             let source_addr = unsafe { (*ipv4hdr).src_addr() };
 
             let source_port = {
-                let udphdr: *const UdpHdr = unsafe { ptr_at(&ctx, EthHdr::LEN + Ipv4Hdr::LEN) }?;
+                let udphdr: *const UdpHdr = unsafe {
+                    ptr_at(&ctx, EthHdr::LEN + Ipv4Hdr::LEN).map_err(|_| FirewallError::OutOfBounds)
+                }?;
                 unsafe { (*udphdr).src_port() }
             };
+            let protocol = unsafe { (*ipv4hdr).proto().map_err(|_| FirewallError::OutOfBounds) }?;
 
             SocketAddr::new(IpAddr::V4(source_addr), source_port)
         }
         Ok(EtherType::Ipv6) => {
-            let ipv6hdr: *const Ipv6Hdr = unsafe { ptr_at(&ctx, EthHdr::LEN)? };
+            let ipv6hdr: *const Ipv6Hdr =
+                unsafe { ptr_at(&ctx, EthHdr::LEN).map_err(|_| FirewallError::OutOfBounds)? };
             let source_addr = unsafe { (*ipv6hdr).src_addr() };
 
             let source_port = {
-                let udphdr: *const UdpHdr = unsafe { ptr_at(&ctx, EthHdr::LEN + Ipv6Hdr::LEN) }?;
+                let udphdr: *const UdpHdr = unsafe { ptr_at(&ctx, EthHdr::LEN + Ipv6Hdr::LEN) }
+                    .map_err(|_| FirewallError::OutOfBounds)?;
                 unsafe { (*udphdr).src_port() }
             };
+            let protocol =
+                unsafe { (*ipv6hdr).next_hdr() }.map_err(|_| FirewallError::OutOfBounds)?;
             SocketAddr::new(IpAddr::V6(source_addr), source_port)
         }
         _ => {
             // protocol not supported
-            return Err(());
+            return Err(FirewallError::UnsupportedProtocol);
         }
     };
     info!(
@@ -119,7 +130,7 @@ fn xdp_firewall(ctx: XdpContext) -> Result<u32, ()> {
             Action::Allow => (),
             Action::Deny => return Ok(xdp_action::XDP_DROP),
         },
-        None => return Err(()),
+        None => return Err(FirewallError::NotIpTraffic),
     }
 
     // SAFETY: we have a per cpu hasmap can ignore that values are overriden from other
