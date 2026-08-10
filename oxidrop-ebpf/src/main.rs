@@ -64,7 +64,10 @@ pub fn oxidrop(ctx: XdpContext) -> u32 {
     match xdp_firewall(ctx) {
         Ok(ret) => ret,
         // if error packet is thrown out
-        Err(_) => xdp_action::XDP_ABORTED,
+        Err(FirewallError::OutOfBounds) => xdp_action::XDP_ABORTED,
+        Err(FirewallError::InvalidChecksum) => xdp_action::XDP_DROP,
+        Err(FirewallError::NotIpTraffic) => xdp_action::XDP_PASS,
+        Err(FirewallError::UnsupportedProtocol) => xdp_action::XDP_PASS,
     }
 }
 /// checks pointer length
@@ -83,10 +86,14 @@ unsafe fn ptr_at<T>(ctx: &XdpContext, offset: usize) -> Result<*const T, ()> {
 
 fn xdp_firewall(ctx: XdpContext) -> Result<u32, FirewallError> {
     let ethhdr: *const EthHdr = unsafe { ptr_at(&ctx, 0).map_err(|_| FirewallError::OutOfBounds)? };
-    let socket = match unsafe { *ethhdr }.ether_type() {
+    let (socket, protocol) = match unsafe { *ethhdr }.ether_type() {
         Ok(EtherType::Ipv4) => {
             let ipv4hdr: *const Ipv4Hdr =
                 unsafe { ptr_at(&ctx, EthHdr::LEN).map_err(|_| FirewallError::OutOfBounds)? };
+            // check checksumm
+            if !verify_ipv4_checksum(ipv4hdr) {
+                return Err(FirewallError::InvalidChecksum);
+            }
             let source_addr = unsafe { (*ipv4hdr).src_addr() };
 
             let source_port = {
@@ -97,7 +104,10 @@ fn xdp_firewall(ctx: XdpContext) -> Result<u32, FirewallError> {
             };
             let protocol = unsafe { (*ipv4hdr).proto().map_err(|_| FirewallError::OutOfBounds) }?;
 
-            SocketAddr::new(IpAddr::V4(source_addr), source_port)
+            (
+                SocketAddr::new(IpAddr::V4(source_addr), source_port),
+                protocol,
+            )
         }
         Ok(EtherType::Ipv6) => {
             let ipv6hdr: *const Ipv6Hdr =
@@ -111,7 +121,10 @@ fn xdp_firewall(ctx: XdpContext) -> Result<u32, FirewallError> {
             };
             let protocol =
                 unsafe { (*ipv6hdr).next_hdr() }.map_err(|_| FirewallError::OutOfBounds)?;
-            SocketAddr::new(IpAddr::V6(source_addr), source_port)
+            (
+                SocketAddr::new(IpAddr::V6(source_addr), source_port),
+                protocol,
+            )
         }
         _ => {
             // protocol not supported
@@ -137,6 +150,25 @@ fn xdp_firewall(ctx: XdpContext) -> Result<u32, FirewallError> {
     let count = unsafe { PACKET_COUNTS.get(&socket).unwrap_or(&0) };
     let _ = PACKET_COUNTS.insert(&socket, count + 1, 0);
     Ok(xdp_action::XDP_PASS)
+}
+
+#[inline(always)]
+fn verify_ipv4_checksum(hdr: *const Ipv4Hdr) -> bool {
+    // Treat the header as a pointer to 16-bit words
+    let ptr = hdr as *const u16;
+    let mut sum: u32 = 0;
+
+    // A standard IPv4 header is 20 bytes, which is 10 16-bit words.
+    for i in 0..10 {
+        sum += unsafe { *ptr.add(i) } as u32;
+    }
+
+    // Fold the 32-bit sum down into 16 bits
+    sum = (sum & 0xFFFF) + (sum >> 16);
+    sum += sum >> 16; // Add any final carry
+
+    // If the calculation is correct, the result must be exactly 0xFFFF
+    (sum as u16) == 0xFFFF
 }
 
 #[cfg(not(test))]

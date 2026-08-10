@@ -13,4 +13,6 @@ pub enum FirewallError {
     NotIpTraffic,
     /// The IP protocol is not supported (e.g., not TCP or UDP).
     UnsupportedProtocol,
+    /// Checkusm mismatched
+    InvalidChecksum,
 }
