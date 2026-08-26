@@ -86,7 +86,7 @@ unsafe fn ptr_at<T>(ctx: &XdpContext, offset: usize) -> Result<*const T, ()> {
 
 fn xdp_firewall(ctx: XdpContext) -> Result<u32, FirewallError> {
     let ethhdr: *const EthHdr = unsafe { ptr_at(&ctx, 0).map_err(|_| FirewallError::OutOfBounds)? };
-    let (socket, protocol) = match unsafe { *ethhdr }.ether_type() {
+    let (socket, _protocol) = match unsafe { *ethhdr }.ether_type() {
         Ok(EtherType::Ipv4) => {
             let ipv4hdr: *const Ipv4Hdr =
                 unsafe { ptr_at(&ctx, EthHdr::LEN).map_err(|_| FirewallError::OutOfBounds)? };
