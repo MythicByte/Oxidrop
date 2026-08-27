@@ -1,13 +1,7 @@
 #![no_std]
 #![no_main]
 
-use core::{
-    mem,
-    net::{
-        IpAddr,
-        SocketAddr,
-    },
-};
+use core::mem;
 
 use aya_ebpf::{
     bindings::xdp_action,
@@ -16,6 +10,7 @@ use aya_ebpf::{
         xdp,
     },
     maps::{
+        Array,
         LpmTrie,
         LruPerCpuHashMap,
         RingBuf,
@@ -36,18 +31,32 @@ use network_types::{
 };
 use oxidrop_common::{
     Action,
+    FirewallConfig,
     FirewallError,
+    Ipv4Packet,
+    Ipv6Packet,
 };
-
+/// Usersapce config
+#[map]
+static CONFIG: Array<FirewallConfig> = Array::with_max_entries(1, 0);
 /// Allow List, on this block bool is ignored
 /// first ip and port, and then the packet counter
 #[map]
-static ALLOW_LIST: LruPerCpuHashMap<SocketAddr, Action> =
+static ALLOW_LIST_V4: LruPerCpuHashMap<Ipv4Packet, Action> =
+    LruPerCpuHashMap::with_max_entries(4096, 0);
+
+#[map]
+static ALLOW_LIST_V6: LruPerCpuHashMap<Ipv6Packet, Action> =
     LruPerCpuHashMap::with_max_entries(4096, 0);
 /// Track Ip Packets
 /// first ip and port, and then the packet counter
 #[map]
-static PACKET_COUNTS: LruPerCpuHashMap<SocketAddr, u64> =
+static PACKET_COUNTS_V4: LruPerCpuHashMap<Ipv4Packet, u64> =
+    LruPerCpuHashMap::with_max_entries(4096, 0);
+/// Track Ip Packets
+/// first ip and port, and then the packet counter
+#[map]
+static PACKET_COUNTS_V6: LruPerCpuHashMap<Ipv6Packet, u64> =
     LruPerCpuHashMap::with_max_entries(4096, 0);
 
 /// Events: pushed to userspace whenever we drop a source for the first time.
@@ -66,6 +75,10 @@ pub fn oxidrop(ctx: XdpContext) -> u32 {
         // if error packet is thrown out
         Err(FirewallError::OutOfBounds) => xdp_action::XDP_ABORTED,
         Err(FirewallError::InvalidChecksum) => xdp_action::XDP_DROP,
+        Err(FirewallError::RateLimited) => xdp_action::XDP_DROP,
+        Err(FirewallError::DeniedByPolicy) => xdp_action::XDP_DROP,
+        // errors we ignore
+        // # FIX check later if should be dropped by default or not
         Err(FirewallError::NotIpTraffic) => xdp_action::XDP_PASS,
         Err(FirewallError::UnsupportedProtocol) => xdp_action::XDP_PASS,
     }
@@ -86,14 +99,10 @@ unsafe fn ptr_at<T>(ctx: &XdpContext, offset: usize) -> Result<*const T, ()> {
 
 fn xdp_firewall(ctx: XdpContext) -> Result<u32, FirewallError> {
     let ethhdr: *const EthHdr = unsafe { ptr_at(&ctx, 0).map_err(|_| FirewallError::OutOfBounds)? };
-    let (socket, _protocol) = match unsafe { *ethhdr }.ether_type() {
+    match unsafe { *ethhdr }.ether_type() {
         Ok(EtherType::Ipv4) => {
             let ipv4hdr: *const Ipv4Hdr =
                 unsafe { ptr_at(&ctx, EthHdr::LEN).map_err(|_| FirewallError::OutOfBounds)? };
-            // check checksumm
-            if !verify_ipv4_checksum(ipv4hdr) {
-                return Err(FirewallError::InvalidChecksum);
-            }
             let source_addr = unsafe { (*ipv4hdr).src_addr() };
 
             let source_port = {
@@ -103,16 +112,32 @@ fn xdp_firewall(ctx: XdpContext) -> Result<u32, FirewallError> {
                 unsafe { (*udphdr).src_port() }
             };
             let protocol = unsafe { (*ipv4hdr).proto().map_err(|_| FirewallError::OutOfBounds) }?;
+            let flow_key = Ipv4Packet::new(
+                u32::from_be(source_addr.into()),
+                source_port,
+                protocol.into(),
+            );
+            info!(
+                &ctx,
+                "SRC IP: {:i}, SRC PORT: {}",
+                flow_key.ip(),
+                flow_key.port()
+            );
+            match unsafe { ALLOW_LIST_V4.get(&flow_key) } {
+                Some(Action::Allow) => (),
+                _ => return Err(FirewallError::DeniedByPolicy),
+            }
 
-            (
-                SocketAddr::new(IpAddr::V4(source_addr), source_port),
-                protocol,
-            )
+            //  Packet Tracking
+            let count = unsafe { PACKET_COUNTS_V4.get(&flow_key).unwrap_or(&0) };
+            let _ = PACKET_COUNTS_V4.insert(&flow_key, count + 1, 0);
+
+            Ok(xdp_action::XDP_PASS)
         }
         Ok(EtherType::Ipv6) => {
             let ipv6hdr: *const Ipv6Hdr =
                 unsafe { ptr_at(&ctx, EthHdr::LEN).map_err(|_| FirewallError::OutOfBounds)? };
-            let source_addr = unsafe { (*ipv6hdr).src_addr() };
+            // let source_addr = unsafe { (*ipv6hdr).src_addr() };
 
             let source_port = {
                 let udphdr: *const UdpHdr = unsafe { ptr_at(&ctx, EthHdr::LEN + Ipv6Hdr::LEN) }
@@ -121,54 +146,33 @@ fn xdp_firewall(ctx: XdpContext) -> Result<u32, FirewallError> {
             };
             let protocol =
                 unsafe { (*ipv6hdr).next_hdr() }.map_err(|_| FirewallError::OutOfBounds)?;
-            (
-                SocketAddr::new(IpAddr::V6(source_addr), source_port),
-                protocol,
-            )
+            //  Get the 16-bit segments from the IPv6 address
+            let segs = unsafe { (*ipv6hdr).src_addr().segments() };
+
+            //  Pack the eight u16 segments into four u32 integers for our map key
+            let mut ip_array = [0u32; 4];
+            for i in 0..4 {
+                ip_array[i] = ((segs[i * 2] as u32) << 16) | (segs[i * 2 + 1] as u32);
+            }
+            let flow_key = Ipv6Packet::new(ip_array, source_port, protocol.into());
+            // # FIX add src later
+            info!(&ctx, "SRC IP: , SRC PORT: {}", flow_key.port());
+            match unsafe { ALLOW_LIST_V6.get(&flow_key) } {
+                Some(Action::Allow) => (),
+                _ => return Err(FirewallError::DeniedByPolicy),
+            }
+
+            // 3. Packet Tracking
+            let count = unsafe { PACKET_COUNTS_V6.get(&flow_key).unwrap_or(&0) };
+            let _ = PACKET_COUNTS_V6.insert(&flow_key, count + 1, 0);
+
+            Ok(xdp_action::XDP_PASS)
         }
         _ => {
             // protocol not supported
             return Err(FirewallError::UnsupportedProtocol);
         }
-    };
-    info!(
-        &ctx,
-        "SRC IP: {:i}, SRC PORT: {}",
-        socket.ip(),
-        socket.port()
-    );
-    // only allow if in allowed list
-    match unsafe { ALLOW_LIST.get(socket) } {
-        Some(is_it_allowed) => match is_it_allowed {
-            Action::Allow => (),
-            Action::Deny => return Ok(xdp_action::XDP_DROP),
-        },
-        None => return Err(FirewallError::NotIpTraffic),
     }
-
-    // SAFETY: we have a per cpu hasmap can ignore that values are overriden from other
-    let count = unsafe { PACKET_COUNTS.get(&socket).unwrap_or(&0) };
-    let _ = PACKET_COUNTS.insert(&socket, count + 1, 0);
-    Ok(xdp_action::XDP_PASS)
-}
-
-#[inline(always)]
-fn verify_ipv4_checksum(hdr: *const Ipv4Hdr) -> bool {
-    // Treat the header as a pointer to 16-bit words
-    let ptr = hdr as *const u16;
-    let mut sum: u32 = 0;
-
-    // A standard IPv4 header is 20 bytes, which is 10 16-bit words.
-    for i in 0..10 {
-        sum += unsafe { *ptr.add(i) } as u32;
-    }
-
-    // Fold the 32-bit sum down into 16 bits
-    sum = (sum & 0xFFFF) + (sum >> 16);
-    sum += sum >> 16; // Add any final carry
-
-    // If the calculation is correct, the result must be exactly 0xFFFF
-    (sum as u16) == 0xFFFF
 }
 
 #[cfg(not(test))]
