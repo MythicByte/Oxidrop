@@ -1,5 +1,8 @@
 #![no_std]
 
+#[cfg(feature = "user")]
+use aya::Pod;
+
 /// What to do with a list
 #[repr(C)]
 #[derive(Clone, Copy)]
@@ -115,3 +118,13 @@ impl Ipv6Packet {
         self.port
     }
 }
+#[cfg(feature = "user")]
+unsafe impl Pod for Action {}
+#[cfg(feature = "user")]
+unsafe impl Pod for FirewallError {}
+#[cfg(feature = "user")]
+unsafe impl Pod for FirewallConfig {}
+#[cfg(feature = "user")]
+unsafe impl Pod for Ipv4Packet {}
+#[cfg(feature = "user")]
+unsafe impl Pod for Ipv6Packet {}

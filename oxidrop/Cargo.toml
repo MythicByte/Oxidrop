@@ -28,6 +28,11 @@ tokio = { workspace = true, features = [
 ] }
 tracing = { workspace = true }
 
+[dev-dependencies]
+etherparse = "0.21.0"
+oxidrop-common = { path = "../oxidrop-common",features=["user"] }
+
+
 [build-dependencies]
 anyhow = { workspace = true }
 aya-build = { workspace = true }
