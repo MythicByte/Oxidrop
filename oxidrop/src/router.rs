@@ -1,9 +1,6 @@
 use axum::{
     Router,
-    response::{
-        IntoResponse,
-        Redirect,
-    },
+    response::IntoResponse,
     routing::get,
 };
 use tower_http::services::ServeDir;

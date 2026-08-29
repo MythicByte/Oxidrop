@@ -12,6 +12,7 @@ use aya_ebpf::{
     maps::{
         Array,
         LpmTrie,
+        LruHashMap,
         LruPerCpuHashMap,
         RingBuf,
     },
@@ -42,12 +43,10 @@ static CONFIG: Array<FirewallConfig> = Array::with_max_entries(1, 0);
 /// Allow List, on this block bool is ignored
 /// first ip and port, and then the packet counter
 #[map]
-static ALLOW_LIST_V4: LruPerCpuHashMap<Ipv4Packet, Action> =
-    LruPerCpuHashMap::with_max_entries(4096, 0);
+static ALLOW_LIST_V4: LruHashMap<Ipv4Packet, Action> = LruHashMap::with_max_entries(4096, 0);
 
 #[map]
-static ALLOW_LIST_V6: LruPerCpuHashMap<Ipv6Packet, Action> =
-    LruPerCpuHashMap::with_max_entries(4096, 0);
+static ALLOW_LIST_V6: LruHashMap<Ipv6Packet, Action> = LruHashMap::with_max_entries(4096, 0);
 /// Track Ip Packets
 /// first ip and port, and then the packet counter
 #[map]
@@ -162,7 +161,7 @@ fn xdp_firewall(ctx: XdpContext) -> Result<u32, FirewallError> {
                 _ => return Err(FirewallError::DeniedByPolicy),
             }
 
-            // 3. Packet Tracking
+            //  Packet Tracking
             let count = unsafe { PACKET_COUNTS_V6.get(&flow_key).unwrap_or(&0) };
             let _ = PACKET_COUNTS_V6.insert(&flow_key, count + 1, 0);
 
