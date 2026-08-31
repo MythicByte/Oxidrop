@@ -18,7 +18,6 @@ use aya_ebpf::{
     },
     programs::XdpContext,
 };
-use aya_log_ebpf::info;
 use network_types::{
     eth::{
         EthHdr,
@@ -61,12 +60,14 @@ static PACKET_COUNTS_V6: LruPerCpuHashMap<Ipv6Packet, u64> =
 /// Events: pushed to userspace whenever we drop a source for the first time.
 #[map]
 static BLOCKED_EVENTS: RingBuf = RingBuf::with_byte_size(256 * 1024, 0);
-/// for checking if a subnet is allowed
-///
-/// # Fix bool placeholder
-#[map]
-static SUBNET_MATCHING: LpmTrie<bool, Action> = LpmTrie::with_max_entries(2048, 0);
 
+/// IPv4 Subnet Matching (Key is a 32-bit integer)
+#[map]
+static SUBNET_MATCHING_V4: LpmTrie<u32, Action> = LpmTrie::with_max_entries(2048, 0);
+
+/// IPv6 Subnet Matching (Key is a 128-bit )
+#[map]
+static SUBNET_MATCHING_V6: LpmTrie<[u32; 4], Action> = LpmTrie::with_max_entries(2048, 0);
 #[xdp]
 pub fn oxidrop(ctx: XdpContext) -> u32 {
     match xdp_firewall(ctx) {
@@ -102,27 +103,41 @@ fn xdp_firewall(ctx: XdpContext) -> Result<u32, FirewallError> {
         Ok(EtherType::Ipv4) => {
             let ipv4hdr: *const Ipv4Hdr =
                 unsafe { ptr_at(&ctx, EthHdr::LEN).map_err(|_| FirewallError::OutOfBounds)? };
-            let source_addr = unsafe { (*ipv4hdr).src_addr() };
 
-            let source_port = {
+            let source_addr = unsafe { *ipv4hdr }.src_addr();
+            let dest_addr = unsafe { *ipv4hdr }.dst_addr();
+
+            let (source_port, dest_port) = {
                 let udphdr: *const UdpHdr = unsafe {
                     ptr_at(&ctx, EthHdr::LEN + Ipv4Hdr::LEN).map_err(|_| FirewallError::OutOfBounds)
                 }?;
-                unsafe { (*udphdr).src_port() }
+                (unsafe { *udphdr }.src_port(), unsafe { *udphdr }.dst_port())
             };
-            let protocol = unsafe { (*ipv4hdr).proto().map_err(|_| FirewallError::OutOfBounds) }?;
+
+            let protocol = unsafe { *ipv4hdr }
+                .proto()
+                .map_err(|_| FirewallError::OutOfBounds)?;
+
             let flow_key = Ipv4Packet::new(
                 u32::from_be(source_addr.into()),
+                u32::from_be(dest_addr.into()),
                 source_port,
-                protocol.into(),
+                dest_port,
+                protocol.into(), // Safely converts to u8
             );
-            info!(
-                &ctx,
-                "SRC IP: {:i}, SRC PORT: {}",
-                flow_key.ip(),
-                flow_key.port()
+            // for reverse lookup
+            let reverse_flow_key = Ipv4Packet::new(
+                u32::from_be(dest_addr.into()),
+                u32::from_be(source_addr.into()),
+                dest_port,
+                source_port,
+                protocol.into(), // Safely converts to u8
             );
-            match unsafe { ALLOW_LIST_V4.get(&flow_key) } {
+            match unsafe {
+                ALLOW_LIST_V4
+                    .get(&flow_key)
+                    .or_else(|| ALLOW_LIST_V4.get(&reverse_flow_key))
+            } {
                 Some(Action::Allow) => (),
                 _ => return Err(FirewallError::DeniedByPolicy),
             }
@@ -136,27 +151,45 @@ fn xdp_firewall(ctx: XdpContext) -> Result<u32, FirewallError> {
         Ok(EtherType::Ipv6) => {
             let ipv6hdr: *const Ipv6Hdr =
                 unsafe { ptr_at(&ctx, EthHdr::LEN).map_err(|_| FirewallError::OutOfBounds)? };
-            // let source_addr = unsafe { (*ipv6hdr).src_addr() };
 
-            let source_port = {
+            let segs_src = unsafe { (*ipv6hdr).src_addr().segments() };
+            let segs_dst = unsafe { (*ipv6hdr).dst_addr().segments() };
+
+            let mut src_array = [0u32; 4];
+            let mut dst_array = [0u32; 4];
+            for i in 0..4 {
+                src_array[i] = ((segs_src[i * 2] as u32) << 16) | (segs_src[i * 2 + 1] as u32);
+                dst_array[i] = ((segs_dst[i * 2] as u32) << 16) | (segs_dst[i * 2 + 1] as u32);
+            }
+
+            let (source_port, dest_port) = {
                 let udphdr: *const UdpHdr = unsafe { ptr_at(&ctx, EthHdr::LEN + Ipv6Hdr::LEN) }
                     .map_err(|_| FirewallError::OutOfBounds)?;
-                unsafe { (*udphdr).src_port() }
+                unsafe { ((*udphdr).src_port(), (*udphdr).dst_port()) }
             };
+
             let protocol =
                 unsafe { (*ipv6hdr).next_hdr() }.map_err(|_| FirewallError::OutOfBounds)?;
-            //  Get the 16-bit segments from the IPv6 address
-            let segs = unsafe { (*ipv6hdr).src_addr().segments() };
 
-            //  Pack the eight u16 segments into four u32 integers for our map key
-            let mut ip_array = [0u32; 4];
-            for i in 0..4 {
-                ip_array[i] = ((segs[i * 2] as u32) << 16) | (segs[i * 2 + 1] as u32);
-            }
-            let flow_key = Ipv6Packet::new(ip_array, source_port, protocol.into());
-            // # FIX add src later
-            info!(&ctx, "SRC IP: , SRC PORT: {}", flow_key.port());
-            match unsafe { ALLOW_LIST_V6.get(&flow_key) } {
+            let flow_key = Ipv6Packet::new(
+                src_array,
+                dst_array,
+                source_port,
+                dest_port,
+                protocol.into(),
+            );
+            let reverse_flow_key = Ipv6Packet::new(
+                dst_array,
+                src_array,
+                dest_port,
+                source_port,
+                protocol.into(),
+            );
+            match unsafe {
+                ALLOW_LIST_V6
+                    .get(&flow_key)
+                    .or_else(|| ALLOW_LIST_V6.get(&reverse_flow_key))
+            } {
                 Some(Action::Allow) => (),
                 _ => return Err(FirewallError::DeniedByPolicy),
             }
