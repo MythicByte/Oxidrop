@@ -15,6 +15,7 @@ use aya_ebpf::{
         LruHashMap,
         LruPerCpuHashMap,
         RingBuf,
+        lpm_trie::Key,
     },
     programs::XdpContext,
 };
@@ -31,11 +32,23 @@ use network_types::{
 };
 use oxidrop_common::{
     Action,
+    ActivaterEtherTypes,
     FirewallConfig,
     FirewallError,
     Ipv4Packet,
     Ipv6Packet,
 };
+
+const DEFAULT_CONFIG: FirewallConfig = FirewallConfig {
+    rate_ns: 75,
+    burst: 1000,
+    protcol_allowed: ActivaterEtherTypes::union(
+        ActivaterEtherTypes::IPV4,
+        ActivaterEtherTypes::IPV6,
+    ),
+    ddos_activated: true,
+};
+
 /// Usersapce config
 #[map]
 static CONFIG: Array<FirewallConfig> = Array::with_max_entries(1, 0);
@@ -100,7 +113,13 @@ unsafe fn ptr_at<T>(ctx: &XdpContext, offset: usize) -> Result<*const T, ()> {
 fn xdp_firewall(ctx: XdpContext) -> Result<u32, FirewallError> {
     let ethhdr: *const EthHdr = unsafe { ptr_at(&ctx, 0).map_err(|_| FirewallError::OutOfBounds)? };
     match unsafe { *ethhdr }.ether_type() {
-        Ok(EtherType::Ipv4) => {
+        Ok(EtherType::Ipv4)
+            if CONFIG
+                .get(0)
+                .unwrap_or(&DEFAULT_CONFIG)
+                .protcol_allowed
+                .contains(ActivaterEtherTypes::IPV4) =>
+        {
             let ipv4hdr: *const Ipv4Hdr =
                 unsafe { ptr_at(&ctx, EthHdr::LEN).map_err(|_| FirewallError::OutOfBounds)? };
 
@@ -133,6 +152,11 @@ fn xdp_firewall(ctx: XdpContext) -> Result<u32, FirewallError> {
                 source_port,
                 protocol.into(), // Safely converts to u8
             );
+            let subnet_key_v4 = Key::new(32, flow_key.source_addr);
+            match SUBNET_MATCHING_V4.get(&subnet_key_v4) {
+                Some(Action::Allow) => (),
+                _ => return Err(FirewallError::DeniedByPolicy),
+            }
             match unsafe {
                 ALLOW_LIST_V4
                     .get(&flow_key)
@@ -185,6 +209,11 @@ fn xdp_firewall(ctx: XdpContext) -> Result<u32, FirewallError> {
                 source_port,
                 protocol.into(),
             );
+            let subnet_key_v6 = Key::new(128, ipv6_be_words(segs_src));
+            match SUBNET_MATCHING_V6.get(&subnet_key_v6) {
+                Some(Action::Allow) => (),
+                _ => return Err(FirewallError::DeniedByPolicy),
+            }
             match unsafe {
                 ALLOW_LIST_V6
                     .get(&flow_key)
@@ -200,11 +229,30 @@ fn xdp_firewall(ctx: XdpContext) -> Result<u32, FirewallError> {
 
             Ok(xdp_action::XDP_PASS)
         }
+        // check if other typ is allowed and get through
+        Ok(x)
+            if CONFIG
+                .get(0)
+                .unwrap_or(&DEFAULT_CONFIG)
+                .protcol_allowed
+                .contains(x.into()) =>
+        {
+            Ok(xdp_action::XDP_PASS)
+        }
         _ => {
             // protocol not supported
             return Err(FirewallError::UnsupportedProtocol);
         }
     }
+}
+#[inline(always)]
+fn ipv6_be_words(segments: [u16; 8]) -> [u32; 4] {
+    let mut words = [0u32; 4];
+    for i in 0..4 {
+        let combined = ((segments[i * 2] as u32) << 16) | (segments[i * 2 + 1] as u32);
+        words[i] = u32::from_be(combined);
+    }
+    words
 }
 
 #[cfg(not(test))]

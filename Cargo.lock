@@ -921,6 +921,8 @@ name = "oxidrop-common"
 version = "0.1.0"
 dependencies = [
  "aya",
+ "bitflags",
+ "network-types",
 ]
 
 [[package]]

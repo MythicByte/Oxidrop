@@ -2,7 +2,7 @@
 
 #[cfg(feature = "user")]
 use aya::Pod;
-
+use network_types::eth::EtherType;
 /// What to do with a list
 #[repr(C)]
 #[derive(Clone, Copy)]
@@ -27,12 +27,26 @@ pub enum FirewallError {
     /// Denied with policy
     DeniedByPolicy,
 }
+bitflags::bitflags! {
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub struct ActivaterEtherTypes: u16 {
+        const LOOP       = 1 << 0;
+        const IPV4       = 1 << 1;
+        const ARP        = 1 << 2;
+        const IEEE8021Q  = 1 << 3;
+        const IPV6       = 1 << 4;
+        const IEEE8021AD  = 1 << 5;
+    }
+}
 // Configuration provided by Userspace
 #[repr(C)]
 #[derive(Clone, Copy)]
 pub struct FirewallConfig {
     pub rate_ns: u64, // Nanoseconds per token
     pub burst: u64,   // Max tokens (bucket size)
+    pub protcol_allowed: ActivaterEtherTypes,
+    /// if ddos protection is on
+    pub ddos_activated: bool,
 }
 
 /// Tightly packed 5-Tuple for IPv4 state tracking
@@ -102,6 +116,16 @@ impl Ipv6Packet {
         }
     }
 }
+impl Default for FirewallConfig {
+    fn default() -> Self {
+        Self {
+            rate_ns: Default::default(),
+            burst: Default::default(),
+            protcol_allowed: ActivaterEtherTypes::IPV4 | ActivaterEtherTypes::IPV6,
+            ddos_activated: true,
+        }
+    }
+}
 #[cfg(feature = "user")]
 unsafe impl Pod for Action {}
 #[cfg(feature = "user")]
@@ -112,3 +136,17 @@ unsafe impl Pod for FirewallConfig {}
 unsafe impl Pod for Ipv4Packet {}
 #[cfg(feature = "user")]
 unsafe impl Pod for Ipv6Packet {}
+
+impl From<EtherType> for ActivaterEtherTypes {
+    fn from(value: EtherType) -> Self {
+        match value {
+            EtherType::Loop => Self::LOOP,
+            EtherType::Ipv4 => Self::IPV4,
+            EtherType::Arp => Self::ARP,
+            EtherType::Ieee8021q => Self::IEEE8021Q,
+            EtherType::Ipv6 => Self::IPV6,
+            EtherType::Ieee8021ad => Self::IEEE8021AD,
+            _ => Self::empty(),
+        }
+    }
+}

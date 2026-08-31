@@ -11,6 +11,8 @@ user = ["aya"]
 
 [dependencies]
 aya = { workspace = true, optional = true }
+network-types = { workspace = true }
+bitflags = "2.13.1"
 
 [lib]
 path = "src/lib.rs"
