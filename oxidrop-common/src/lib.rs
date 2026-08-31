@@ -35,87 +35,71 @@ pub struct FirewallConfig {
     pub burst: u64,   // Max tokens (bucket size)
 }
 
-/// Tightly packed struct for IPv4
-/// Total size: 8 bytes
+/// Tightly packed 5-Tuple for IPv4 state tracking
+/// Total size: 16 bytes (Strictly aligned)
 #[repr(C)]
 #[derive(Clone, Copy)]
 pub struct Ipv4Packet {
-    pub ip_addr: u32, // 4 bytes
-    pub port: u16,    // 2 bytes
-    pub protocol: u8, // 1 byte
-    pub _pad: u8,     // 1 byte - ZERO THIS OUT
+    pub source_addr: u32,      // 4 bytes (Source IP)
+    pub source_port: u16,      // 2 bytes (Source Port)
+    pub destination_addr: u32, // 4 bytes (Destination IP)
+    pub destination_port: u16, // 2 bytes (Destination Port)
+    pub protocol: u8,          // 1 byte  (Protocol - TCP/UDP)
+    pub _pad: u8,              // 1 byte  - ZERO THIS OUT
+    pub _pad2: u16,            // 2 bytes - ZERO THIS OUT (Ensures 4-byte alignment)
 }
 
 impl Ipv4Packet {
-    /// Create a new IPv4
     #[inline(always)]
-    pub fn new(ip: u32, port: u16, protocol: u8) -> Self {
+    pub fn new(
+        source_addr: u32,
+        destination_addr: u32,
+        source_port: u16,
+        destination_port: u16,
+        protocol: u8,
+    ) -> Self {
         Self {
-            ip_addr: ip,
-            port,
+            source_addr,
+            destination_addr,
+            source_port,
+            destination_port,
             protocol,
             _pad: 0,
+            _pad2: 0,
         }
-    }
-
-    /// get ip
-    #[inline(always)]
-    pub fn ip(&self) -> u32 {
-        self.ip_addr
-    }
-
-    /// get protocol
-    #[inline(always)]
-    pub fn protocol(&self) -> u8 {
-        self.protocol
-    }
-
-    /// get port
-    #[inline(always)]
-    pub fn port(&self) -> u16 {
-        self.port
     }
 }
 
-/// Tightly packed struct for IPv6
-/// Total size: 20 bytes
+/// Tightly packed 5-Tuple for IPv6 state tracking
+/// Total size: 40 bytes (Strictly aligned)
 #[repr(C)]
 #[derive(Clone, Copy)]
 pub struct Ipv6Packet {
-    pub ip_addr: [u32; 4], // 16 bytes
-    pub port: u16,         // 2 bytes
-    pub protocol: u8,      // 1 byte
-    pub _pad: u8,          // 1 byte - ZERO THIS OUT
+    pub source_addr: [u32; 4],      // 16 bytes
+    pub source_port: u16,           // 2 bytes
+    pub destination_addr: [u32; 4], // 16 bytes
+    pub destination_port: u16,      // 2 bytes
+    pub protocol: u8,               // 1 byte
+    pub _pad: [u8; 3],              // 3 bytes - ZERO THIS OUT (Ensures 4-byte alignment)
 }
 
 impl Ipv6Packet {
-    /// Create a new IPv6 key
     #[inline(always)]
-    pub fn new(ip: [u32; 4], port: u16, protocol: u8) -> Self {
+    pub fn new(
+        source_addr: [u32; 4],
+        destination_addr: [u32; 4],
+        source_port: u16,
+        destination_port: u16,
+        protocol: u8,
+    ) -> Self {
         Self {
-            ip_addr: ip,
-            port,
+            source_addr,
+            destination_addr,
+            source_port,
+            destination_port,
             protocol,
-            _pad: 0, // Explicitly zeroed padding
+            _pad: [0; 3], // Explicitly zeroed padding
         }
-    }
-
-    /// get ip
-    #[inline(always)]
-    pub fn ip(&self) -> [u32; 4] {
-        self.ip_addr
-    }
-
-    /// get protocol
-    #[inline(always)]
-    pub fn protocol(&self) -> u8 {
-        self.protocol
-    }
-
-    /// get port
-    #[inline(always)]
-    pub fn port(&self) -> u16 {
-        self.port
     }
 }
 #[cfg(feature = "user")]
