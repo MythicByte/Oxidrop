@@ -37,10 +37,11 @@ use oxidrop_common::{
     FirewallError,
     Ipv4Packet,
     Ipv6Packet,
+    TokenBucketState,
 };
 
 const DEFAULT_CONFIG: FirewallConfig = FirewallConfig {
-    rate_ns: 75,
+    rate_ns: 1_000_000,
     burst: 1000,
     protcol_allowed: ActivaterEtherTypes::union(
         ActivaterEtherTypes::IPV4,
@@ -62,12 +63,12 @@ static ALLOW_LIST_V6: LruHashMap<Ipv6Packet, Action> = LruHashMap::with_max_entr
 /// Track Ip Packets
 /// first ip and port, and then the packet counter
 #[map]
-static PACKET_COUNTS_V4: LruPerCpuHashMap<Ipv4Packet, u64> =
+static PACKET_COUNTS_V4: LruPerCpuHashMap<Ipv4Packet, TokenBucketState> =
     LruPerCpuHashMap::with_max_entries(4096, 0);
 /// Track Ip Packets
 /// first ip and port, and then the packet counter
 #[map]
-static PACKET_COUNTS_V6: LruPerCpuHashMap<Ipv6Packet, u64> =
+static PACKET_COUNTS_V6: LruPerCpuHashMap<Ipv6Packet, TokenBucketState> =
     LruPerCpuHashMap::with_max_entries(4096, 0);
 
 /// Events: pushed to userspace whenever we drop a source for the first time.
@@ -167,10 +168,40 @@ fn xdp_firewall(ctx: XdpContext) -> Result<u32, FirewallError> {
             }
 
             //  Packet Tracking
-            let count = unsafe { PACKET_COUNTS_V4.get(&flow_key).unwrap_or(&0) };
-            let _ = PACKET_COUNTS_V4.insert(&flow_key, count + 1, 0);
+            let now = unsafe { aya_ebpf::helpers::bpf_ktime_get_ns() };
 
-            Ok(xdp_action::XDP_PASS)
+            let config = CONFIG.get(0).unwrap_or(&DEFAULT_CONFIG);
+
+            // Fetch or initialize token bucket state for IPv4
+            let mut bucket = unsafe {
+                PACKET_COUNTS_V4
+                    .get(&flow_key)
+                    .copied()
+                    .unwrap_or(TokenBucketState {
+                        tokens: config.burst,
+                        last_update: now,
+                    })
+            };
+
+            // Calculate token refill based on elapsed time
+            let elapsed = now.saturating_sub(bucket.last_update);
+            let generated_tokens = elapsed / config.rate_ns;
+
+            if generated_tokens > 0 {
+                bucket.tokens = (bucket.tokens + generated_tokens).min(config.burst);
+                bucket.last_update = now;
+            }
+
+            // Consume a token or drop the packet
+            if bucket.tokens > 0 {
+                bucket.tokens -= 1;
+                let _ = PACKET_COUNTS_V4.insert(&flow_key, bucket, 0);
+                Ok(xdp_action::XDP_PASS)
+            } else {
+                // Keep the last update timestamp even when rate-limited
+                let _ = PACKET_COUNTS_V4.insert(&flow_key, bucket, 0);
+                Err(FirewallError::RateLimited)
+            }
         }
         Ok(EtherType::Ipv6) => {
             let ipv6hdr: *const Ipv6Hdr =
@@ -224,10 +255,40 @@ fn xdp_firewall(ctx: XdpContext) -> Result<u32, FirewallError> {
             }
 
             //  Packet Tracking
-            let count = unsafe { PACKET_COUNTS_V6.get(&flow_key).unwrap_or(&0) };
-            let _ = PACKET_COUNTS_V6.insert(&flow_key, count + 1, 0);
+            let now = unsafe { aya_ebpf::helpers::bpf_ktime_get_ns() };
 
-            Ok(xdp_action::XDP_PASS)
+            let config = CONFIG.get(0).unwrap_or(&DEFAULT_CONFIG);
+
+            // Fetch or initialize token bucket state for IPv4
+            let mut bucket = unsafe {
+                PACKET_COUNTS_V6
+                    .get(&flow_key)
+                    .copied()
+                    .unwrap_or(TokenBucketState {
+                        tokens: config.burst,
+                        last_update: now,
+                    })
+            };
+
+            // Calculate token refill based on elapsed time
+            let elapsed = now.saturating_sub(bucket.last_update);
+            let generated_tokens = elapsed / config.rate_ns;
+
+            if generated_tokens > 0 {
+                bucket.tokens = (bucket.tokens + generated_tokens).min(config.burst);
+                bucket.last_update = now;
+            }
+
+            // Consume a token or drop the packet
+            if bucket.tokens > 0 {
+                bucket.tokens -= 1;
+                let _ = PACKET_COUNTS_V6.insert(&flow_key, bucket, 0);
+                Ok(xdp_action::XDP_PASS)
+            } else {
+                // Keep the last update timestamp even when rate-limited
+                let _ = PACKET_COUNTS_V6.insert(&flow_key, bucket, 0);
+                Err(FirewallError::RateLimited)
+            }
         }
         // check if other typ is allowed and get through
         Ok(x)

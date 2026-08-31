@@ -10,6 +10,13 @@ pub enum Action {
     Allow,
     Deny,
 }
+/// The ddos protection bucket
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct TokenBucketState {
+    pub tokens: u64,
+    pub last_update: u64,
+}
 /// Erros for the firewall
 #[repr(C)]
 #[derive(Clone, Copy)]
