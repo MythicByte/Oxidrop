@@ -7,8 +7,8 @@ use network_types::eth::EtherType;
 #[repr(C)]
 #[derive(Clone, Copy)]
 pub enum Action {
-    Allow,
-    Deny,
+    Allow = 0,
+    Deny = 1,
 }
 /// The ddos protection bucket
 #[repr(C)]
@@ -22,17 +22,15 @@ pub struct TokenBucketState {
 #[derive(Clone, Copy)]
 pub enum FirewallError {
     /// The packet is too short, and reading the header would go out of bounds.
-    OutOfBounds,
+    OutOfBounds = 0,
     /// The packet is not IPv4 or IPv6 (e.g., ARP).
-    NotIpTraffic,
+    NotIpTraffic = 1,
     /// The IP protocol is not supported (e.g., not TCP or UDP).
-    UnsupportedProtocol,
-    /// Checkusm mismatched
-    InvalidChecksum,
+    UnsupportedProtocol = 2,
     /// Rate Limit
-    RateLimited,
+    RateLimited = 3,
     /// Denied with policy
-    DeniedByPolicy,
+    DeniedByPolicy = 4,
 }
 bitflags::bitflags! {
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
