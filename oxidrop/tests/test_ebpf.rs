@@ -1,21 +1,12 @@
 use aya::{
     Ebpf,
     TestRun,
-    maps::{
-        PerCpuHashMap,
-        PerCpuValues,
-    },
     programs::{
         TestRunOptions,
         Xdp,
     },
-    util::online_cpus,
 };
 use etherparse::PacketBuilder;
-use oxidrop_common::{
-    Action,
-    Ipv4Packet,
-};
 
 const XDP_ABORTED: u32 = 0;
 const XDP_DROP: u32 = 1;
