@@ -112,7 +112,6 @@ pub fn oxidrop(ctx: XdpContext) -> u32 {
         Ok(ret) => ret,
         // if error packet is thrown out
         Err(FirewallError::OutOfBounds) => xdp_action::XDP_ABORTED,
-        Err(FirewallError::InvalidChecksum) => xdp_action::XDP_DROP,
         Err(FirewallError::RateLimited) => xdp_action::XDP_DROP,
         Err(FirewallError::DeniedByPolicy) => xdp_action::XDP_DROP,
         // errors we ignore
