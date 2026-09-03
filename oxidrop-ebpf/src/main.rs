@@ -42,6 +42,7 @@ use oxidrop_common::{
     Ipv6Packet,
     RateProfile,
     TokenBucketState,
+    TraficDirection,
 };
 
 const DEFAULT_CONFIG: FirewallConfig = FirewallConfig {
@@ -72,6 +73,8 @@ const DEFAULT_CONFIG: FirewallConfig = FirewallConfig {
         rate_shift: 23,
         burst: 100,
     },
+    incoming_ethernet_adapter: None,
+    output_ethernet_adapter: None,
 };
 
 /// Usersapce config
@@ -136,14 +139,18 @@ unsafe fn ptr_at<T>(ctx: &XdpContext, offset: usize) -> Result<*const T, ()> {
 
 fn xdp_firewall(ctx: XdpContext) -> Result<u32, FirewallError> {
     let ethhdr: *const EthHdr = unsafe { ptr_at(&ctx, 0).map_err(|_| FirewallError::OutOfBounds)? };
+    let config = CONFIG.get(0).unwrap_or(&DEFAULT_CONFIG);
+    let ingress = ctx.ingress_ifindex();
+
+    let direction = if Some(ingress) == config.incoming_ethernet_adapter {
+        TraficDirection::Incoming
+    } else if Some(ingress) == config.output_ethernet_adapter {
+        TraficDirection::Outgoing
+    } else {
+        TraficDirection::Incoming
+    };
     match unsafe { *ethhdr }.ether_type() {
-        Ok(EtherType::Ipv4)
-            if CONFIG
-                .get(0)
-                .unwrap_or(&DEFAULT_CONFIG)
-                .protcol_allowed
-                .contains(ActivaterEtherTypes::IPV4) =>
-        {
+        Ok(EtherType::Ipv4) if config.protcol_allowed.contains(ActivaterEtherTypes::IPV4) => {
             let ipv4hdr: *const Ipv4Hdr =
                 unsafe { ptr_at(&ctx, EthHdr::LEN).map_err(|_| FirewallError::OutOfBounds)? };
 
@@ -153,27 +160,32 @@ fn xdp_firewall(ctx: XdpContext) -> Result<u32, FirewallError> {
                 .proto()
                 .map_err(|_| FirewallError::OutOfBounds)?;
             let ip_header_len_ipv4_ihl = unsafe { (*ipv4hdr).ihl() } as usize;
-            let (source_port, dest_port) = {
+            let (source_port, dest_port, remove_from_hashmap) = {
                 match protocol {
                     IpProto::Tcp => {
                         let tcphdr: *const TcpHdr =
                             unsafe { ptr_at(&ctx, EthHdr::LEN + ip_header_len_ipv4_ihl) }
                                 .map_err(|_| FirewallError::OutOfBounds)?;
+                        let remove_from_hashmap = {
+                            let is_fin = unsafe { (*tcphdr).fin() } != 0;
+                            let is_rst = unsafe { (*tcphdr).rst() } != 0;
+                            is_rst || is_fin
+                        };
                         (
                             u16::from_be_bytes(unsafe { (*tcphdr).source }),
                             u16::from_be_bytes(unsafe { (*tcphdr).dest }),
+                            remove_from_hashmap,
                         )
                     }
                     IpProto::Udp => {
                         let udphdr: *const UdpHdr =
                             unsafe { ptr_at(&ctx, EthHdr::LEN + ip_header_len_ipv4_ihl) }
                                 .map_err(|_| FirewallError::OutOfBounds)?;
-                        unsafe { ((*udphdr).src_port(), (*udphdr).dst_port()) }
+                        unsafe { ((*udphdr).src_port(), (*udphdr).dst_port(), false) }
                     }
-                    _ => (0, 0),
+                    _ => (0, 0, false),
                 }
             };
-
             let flow_key = Ipv4Packet::new(
                 u32::from_ne_bytes(source_addr.octets()),
                 u32::from_ne_bytes(dest_addr.octets()),
@@ -181,32 +193,65 @@ fn xdp_firewall(ctx: XdpContext) -> Result<u32, FirewallError> {
                 dest_port,
                 protocol.into(), // Safely converts to u8
             );
-            // for reverse lookup
-            let reverse_flow_key = Ipv4Packet::new(
-                u32::from_ne_bytes(dest_addr.octets()),
-                u32::from_ne_bytes(source_addr.octets()),
-                dest_port,
-                source_port,
-                protocol.into(), // Safely converts to u8
-            );
+            let flow_key_direction = match direction {
+                TraficDirection::Incoming => {
+                    let reverse_flow_key = Ipv4Packet::new(
+                        u32::from_ne_bytes(dest_addr.octets()),
+                        u32::from_ne_bytes(source_addr.octets()),
+                        dest_port,
+                        source_port,
+                        protocol.into(), // Safely converts to u8
+                    );
+                    reverse_flow_key
+                }
+                TraficDirection::Outgoing => {
+                    let flow_key = Ipv4Packet::new(
+                        u32::from_ne_bytes(source_addr.octets()),
+                        u32::from_ne_bytes(dest_addr.octets()),
+                        source_port,
+                        dest_port,
+                        protocol.into(), // Safely converts to u8
+                    );
+                    flow_key
+                }
+            };
             let subnet_key_v4 = Key::new(32, flow_key.source_addr);
             match SUBNET_MATCHING_V4.get(&subnet_key_v4) {
                 Some(Action::Allow) => (),
                 _ => return Err(FirewallError::DeniedByPolicy),
             }
-            match unsafe {
-                ALLOW_LIST_V4
-                    .get(&flow_key)
-                    .or_else(|| ALLOW_LIST_V4.get(&reverse_flow_key))
-            } {
-                Some(Action::Allow) => (),
-                _ => return Err(FirewallError::DeniedByPolicy),
+            // normal operation
+            if !remove_from_hashmap {
+                match direction {
+                    TraficDirection::Incoming => {
+                        match unsafe { ALLOW_LIST_V4.get(&flow_key_direction) } {
+                            Some(Action::Allow) => (),
+                            _ => return Err(FirewallError::DeniedByPolicy),
+                        }
+                    }
+                    TraficDirection::Outgoing => {
+                        if unsafe { ALLOW_LIST_V4.get(&flow_key_direction).is_none() } {
+                            let _ = ALLOW_LIST_V4.insert(&flow_key_direction, &Action::Allow, 0);
+                        }
+                    }
+                }
+            } else {
+                // remove tcp reset or find
+                let _ = ALLOW_LIST_V4.remove(&flow_key_direction);
+                let _ = PACKET_COUNTS_V4.remove(&flow_key_direction);
+                let target_ifindex = config.output_ethernet_adapter;
+                if let Some(ethernet_rederect) = target_ifindex {
+                    unsafe {
+                        aya_ebpf::helpers::bpf_redirect(ethernet_rederect as u32, 0);
+                    }
+                    return Ok(xdp_action::XDP_REDIRECT);
+                } else {
+                    return Ok(xdp_action::XDP_PASS);
+                }
             }
 
             //  Packet Tracking
             let now = unsafe { aya_ebpf::helpers::bpf_ktime_get_ns() };
-
-            let config = CONFIG.get(0).unwrap_or(&DEFAULT_CONFIG);
 
             let active_profile = match protocol {
                 IpProto::Tcp => &config.tcp_profile,
@@ -218,7 +263,7 @@ fn xdp_firewall(ctx: XdpContext) -> Result<u32, FirewallError> {
             // Fetch or initialize token bucket state for IPv4
             let mut bucket = unsafe {
                 PACKET_COUNTS_V4
-                    .get(&flow_key)
+                    .get(&flow_key_direction)
                     .copied()
                     .unwrap_or(TokenBucketState {
                         tokens: active_profile.burst,
@@ -227,10 +272,18 @@ fn xdp_firewall(ctx: XdpContext) -> Result<u32, FirewallError> {
             };
 
             if evaluate_bucket(&mut bucket, active_profile, now).is_ok() {
-                let _ = PACKET_COUNTS_V4.insert(&flow_key, &bucket, 0);
-                Ok(xdp_action::XDP_PASS)
+                let _ = PACKET_COUNTS_V4.insert(&flow_key_direction, &bucket, 0);
+                let target_ifindex = config.output_ethernet_adapter;
+                if let Some(ethernet_rederect) = target_ifindex {
+                    unsafe {
+                        aya_ebpf::helpers::bpf_redirect(ethernet_rederect as u32, 0);
+                    }
+                    Ok(xdp_action::XDP_REDIRECT)
+                } else {
+                    Ok(xdp_action::XDP_PASS)
+                }
             } else {
-                let _ = PACKET_COUNTS_V4.insert(&flow_key, &bucket, 0);
+                let _ = PACKET_COUNTS_V4.insert(&flow_key_direction, &bucket, 0);
                 Err(FirewallError::RateLimited)
             }
         }
@@ -337,58 +390,96 @@ fn xdp_firewall(ctx: XdpContext) -> Result<u32, FirewallError> {
                     _ => break,
                 }
             }
-            let (source_port, dest_port) = if found_l4 {
+            let (source_port, dest_port, remove_from_hashmap) = if found_l4 {
                 match next_proto {
                     IpProto::Tcp => {
                         let tcphdr: *const TcpHdr = unsafe { ptr_at(&ctx, current_offset) }
                             .map_err(|_| FirewallError::OutOfBounds)?;
+                        let remove_from_hashmap = {
+                            let is_fin = unsafe { (*tcphdr).fin() } != 0;
+                            let is_rst = unsafe { (*tcphdr).rst() } != 0;
+                            is_rst || is_fin
+                        };
                         (
                             u16::from_be_bytes(unsafe { (*tcphdr).source }),
                             u16::from_be_bytes(unsafe { (*tcphdr).dest }),
+                            remove_from_hashmap,
                         )
                     }
                     IpProto::Udp => {
                         let udphdr: *const UdpHdr = unsafe { ptr_at(&ctx, current_offset) }
                             .map_err(|_| FirewallError::OutOfBounds)?;
-                        unsafe { ((*udphdr).src_port(), (*udphdr).dst_port()) }
+                        unsafe { ((*udphdr).src_port(), (*udphdr).dst_port(), false) }
                     }
-                    _ => (0, 0),
+                    _ => (0, 0, false),
                 }
             } else {
-                (0, 0)
+                (0, 0, false)
             };
-            let flow_key = Ipv6Packet::new(
+            let _flow_key = Ipv6Packet::new(
                 src_array,
                 dst_array,
                 source_port,
                 dest_port,
                 next_proto.into(),
             );
-            let reverse_flow_key = Ipv6Packet::new(
-                dst_array,
-                src_array,
-                dest_port,
-                source_port,
-                next_proto.into(),
-            );
+            let flow_key_direction = match direction {
+                TraficDirection::Incoming => {
+                    let reverse_flow_key = Ipv6Packet::new(
+                        dst_array,
+                        src_array,
+                        dest_port,
+                        source_port,
+                        next_proto.into(),
+                    );
+                    reverse_flow_key
+                }
+                TraficDirection::Outgoing => {
+                    let flow_key = Ipv6Packet::new(
+                        src_array,
+                        dst_array,
+                        source_port,
+                        dest_port,
+                        next_proto.into(),
+                    );
+                    flow_key
+                }
+            };
             let subnet_key_v6 = Key::new(128, src_array);
             match SUBNET_MATCHING_V6.get(&subnet_key_v6) {
                 Some(Action::Allow) => (),
                 _ => return Err(FirewallError::DeniedByPolicy),
             }
-            match unsafe {
-                ALLOW_LIST_V6
-                    .get(&flow_key)
-                    .or_else(|| ALLOW_LIST_V6.get(&reverse_flow_key))
-            } {
-                Some(Action::Allow) => (),
-                _ => return Err(FirewallError::DeniedByPolicy),
+            if !remove_from_hashmap {
+                match direction {
+                    TraficDirection::Incoming => {
+                        match unsafe { ALLOW_LIST_V6.get(&flow_key_direction) } {
+                            Some(Action::Allow) => (),
+                            _ => return Err(FirewallError::DeniedByPolicy),
+                        }
+                    }
+                    TraficDirection::Outgoing => {
+                        if unsafe { ALLOW_LIST_V6.get(&flow_key_direction).is_none() } {
+                            let _ = ALLOW_LIST_V6.insert(&flow_key_direction, &Action::Allow, 0);
+                        }
+                    }
+                }
+            } else {
+                let _ = ALLOW_LIST_V6.remove(&flow_key_direction);
+                let _ = PACKET_COUNTS_V6.remove(&flow_key_direction);
+                let target_ifindex = config.output_ethernet_adapter;
+                if let Some(ethernet_rederect) = target_ifindex {
+                    unsafe {
+                        aya_ebpf::helpers::bpf_redirect(ethernet_rederect as u32, 0);
+                    }
+                    return Ok(xdp_action::XDP_REDIRECT);
+                } else {
+                    return Ok(xdp_action::XDP_PASS);
+                }
             }
 
             //  Packet Tracking
             let now = unsafe { aya_ebpf::helpers::bpf_ktime_get_ns() };
-
-            let config = CONFIG.get(0).unwrap_or(&DEFAULT_CONFIG);
 
             let active_profile = match next_proto {
                 IpProto::Tcp => &config.tcp_profile,
@@ -400,7 +491,7 @@ fn xdp_firewall(ctx: XdpContext) -> Result<u32, FirewallError> {
             // Fetch or initialize token bucket state for IPv4
             let mut bucket = unsafe {
                 PACKET_COUNTS_V6
-                    .get(&flow_key)
+                    .get(&flow_key_direction)
                     .copied()
                     .unwrap_or(TokenBucketState {
                         tokens: active_profile.burst,
@@ -409,23 +500,23 @@ fn xdp_firewall(ctx: XdpContext) -> Result<u32, FirewallError> {
             };
 
             if evaluate_bucket(&mut bucket, active_profile, now).is_ok() {
-                let _ = PACKET_COUNTS_V6.insert(&flow_key, &bucket, 0);
-                Ok(xdp_action::XDP_PASS)
+                let _ = PACKET_COUNTS_V6.insert(&flow_key_direction, &bucket, 0);
+                let target_ifindex = config.output_ethernet_adapter;
+                if let Some(ethernet_rederect) = target_ifindex {
+                    unsafe {
+                        aya_ebpf::helpers::bpf_redirect(ethernet_rederect as u32, 0);
+                    }
+                    Ok(xdp_action::XDP_REDIRECT)
+                } else {
+                    Ok(xdp_action::XDP_PASS)
+                }
             } else {
-                let _ = PACKET_COUNTS_V6.insert(&flow_key, &bucket, 0);
+                let _ = PACKET_COUNTS_V6.insert(&flow_key_direction, &bucket, 0);
                 Err(FirewallError::RateLimited)
             }
         }
         // check if other typ is allowed and get through
-        Ok(x)
-            if CONFIG
-                .get(0)
-                .unwrap_or(&DEFAULT_CONFIG)
-                .protcol_allowed
-                .contains(x.into()) =>
-        {
-            Ok(xdp_action::XDP_PASS)
-        }
+        Ok(x) if config.protcol_allowed.contains(x.into()) => Ok(xdp_action::XDP_PASS),
         _ => {
             // protocol not supported
             return Err(FirewallError::UnsupportedProtocol);

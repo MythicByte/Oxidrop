@@ -10,6 +10,13 @@ pub enum Action {
     Allow = 0,
     Deny = 1,
 }
+/// which directions of ethenet adapter i need to check
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub enum TraficDirection {
+    Incoming = 0,
+    Outgoing = 1,
+}
 /// The ddos protection bucket
 #[repr(C)]
 #[derive(Clone, Copy, Debug)]
@@ -61,6 +68,10 @@ pub struct FirewallConfig {
     pub protcol_allowed: ActivaterEtherTypes,
     /// if ddos protection is on
     pub ddos_activated: bool,
+    /// The ethernet address for incoming traffic
+    pub incoming_ethernet_adapter: Option<usize>,
+    /// The ethernet address for outcoming traffic
+    pub output_ethernet_adapter: Option<usize>,
 }
 
 /// Tightly packed 5-Tuple for IPv4 state tracking
@@ -158,6 +169,8 @@ impl Default for FirewallConfig {
                 rate_shift: 23,
                 burst: 100,
             },
+            incoming_ethernet_adapter: None,
+            output_ethernet_adapter: None,
         }
     }
 }
@@ -173,6 +186,8 @@ unsafe impl Pod for Ipv4Packet {}
 unsafe impl Pod for Ipv6Packet {}
 #[cfg(feature = "user")]
 unsafe impl Pod for TokenBucketState {}
+#[cfg(feature = "user")]
+unsafe impl Pod for TraficDirection {}
 
 impl From<EtherType> for ActivaterEtherTypes {
     fn from(value: EtherType) -> Self {
