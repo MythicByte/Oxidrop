@@ -189,8 +189,8 @@ fn xdp_firewall(ctx: XdpContext) -> Result<u32, FirewallError> {
             let flow_key_direction = match direction {
                 TraficDirection::Incoming => {
                     let reverse_flow_key = Ipv4Packet::new(
-                        u32::from_ne_bytes(dest_addr.octets()),
-                        u32::from_ne_bytes(source_addr.octets()),
+                        u32::from_be_bytes(dest_addr.octets()),
+                        u32::from_be_bytes(source_addr.octets()),
                         dest_port,
                         source_port,
                         protocol.into(), // Safely converts to u8
@@ -199,8 +199,8 @@ fn xdp_firewall(ctx: XdpContext) -> Result<u32, FirewallError> {
                 }
                 TraficDirection::Outgoing => {
                     let flow_key = Ipv4Packet::new(
-                        u32::from_ne_bytes(source_addr.octets()),
-                        u32::from_ne_bytes(dest_addr.octets()),
+                        u32::from_be_bytes(source_addr.octets()),
+                        u32::from_be_bytes(dest_addr.octets()),
                         source_port,
                         dest_port,
                         protocol.into(), // Safely converts to u8
