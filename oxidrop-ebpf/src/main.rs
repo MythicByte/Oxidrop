@@ -219,17 +219,28 @@ fn xdp_firewall(ctx: XdpContext) -> Result<u32, FirewallError> {
             if !remove_from_hashmap {
                 match direction {
                     TraficDirection::Incoming => {
-                        match unsafe { ALLOW_LIST_V4.get(&flow_key_direction) } {
-                            Some(AllowListState {
-                                action: Action::Allow,
-                                last_seen: _,
-                            }) => (),
-                            _ => return Err(FirewallError::DeniedByPolicy),
+                        let now = unsafe { aya_ebpf::helpers::bpf_ktime_get_ns() };
+                        if let Some(state_ptr) = ALLOW_LIST_V4.get_ptr_mut(&flow_key_direction) {
+                            unsafe {
+                                if (*state_ptr).action == Action::Allow {
+                                    (*state_ptr).last_seen = now; // Refresh the timer on every active packet
+                                } else {
+                                    return Err(FirewallError::DeniedByPolicy);
+                                }
+                            }
+                        } else {
+                            return Err(FirewallError::DeniedByPolicy);
                         }
                     }
                     TraficDirection::Outgoing => {
-                        if unsafe { ALLOW_LIST_V4.get(&flow_key_direction).is_none() } {
-                            let now = unsafe { aya_ebpf::helpers::bpf_ktime_get_ns() };
+                        let now = unsafe { aya_ebpf::helpers::bpf_ktime_get_ns() };
+                        if let Some(state_ptr) = ALLOW_LIST_V4.get_ptr_mut(&flow_key_direction) {
+                            // Entry already exists: refresh the timestamp
+                            unsafe {
+                                (*state_ptr).last_seen = now;
+                            }
+                        } else {
+                            // Entry doesn't exist yet: insert a new allowed flow state
                             let _ = ALLOW_LIST_V4.insert(
                                 &flow_key_direction,
                                 AllowListState {
@@ -461,17 +472,28 @@ fn xdp_firewall(ctx: XdpContext) -> Result<u32, FirewallError> {
             if !remove_from_hashmap {
                 match direction {
                     TraficDirection::Incoming => {
-                        match unsafe { ALLOW_LIST_V6.get(&flow_key_direction) } {
-                            Some(AllowListState {
-                                action: Action::Allow,
-                                last_seen: _,
-                            }) => (),
-                            _ => return Err(FirewallError::DeniedByPolicy),
+                        let now = unsafe { aya_ebpf::helpers::bpf_ktime_get_ns() };
+                        if let Some(state_ptr) = ALLOW_LIST_V6.get_ptr_mut(&flow_key_direction) {
+                            unsafe {
+                                if (*state_ptr).action == Action::Allow {
+                                    (*state_ptr).last_seen = now; // Refresh the timer on every active packet
+                                } else {
+                                    return Err(FirewallError::DeniedByPolicy);
+                                }
+                            }
+                        } else {
+                            return Err(FirewallError::DeniedByPolicy);
                         }
                     }
                     TraficDirection::Outgoing => {
-                        if unsafe { ALLOW_LIST_V6.get(&flow_key_direction).is_none() } {
-                            let now = unsafe { aya_ebpf::helpers::bpf_ktime_get_ns() };
+                        let now = unsafe { aya_ebpf::helpers::bpf_ktime_get_ns() };
+                        if let Some(state_ptr) = ALLOW_LIST_V6.get_ptr_mut(&flow_key_direction) {
+                            // Entry already exists: refresh the timestamp
+                            unsafe {
+                                (*state_ptr).last_seen = now;
+                            }
+                        } else {
+                            // Entry doesn't exist yet: insert a new allowed flow state
                             let _ = ALLOW_LIST_V6.insert(
                                 &flow_key_direction,
                                 AllowListState {
@@ -512,7 +534,7 @@ fn xdp_firewall(ctx: XdpContext) -> Result<u32, FirewallError> {
                 _ => &config.default_profile,
             };
 
-            // Fetch or initialize token bucket state for IPv4
+            // Fetch or initialize token bucket state for Ipv4
             let bucket = unsafe {
                 PACKET_COUNTS_V6
                     .get(&flow_key_direction)

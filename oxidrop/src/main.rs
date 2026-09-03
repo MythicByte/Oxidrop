@@ -6,6 +6,11 @@ use aya::programs::{
     XdpMode,
 };
 use clap::Parser;
+use oxidrop_common::AllowListState;
+use rustix::time::{
+    ClockId,
+    clock_gettime,
+};
 use tower_sessions::{
     Expiry,
     MemoryStore,
@@ -82,6 +87,59 @@ async fn main() -> anyhow::Result<()> {
         .context("failed to attach the XDP program with default mode - try changing XdpMode::default() to XdpMode::Skb")?;
     info!("XDP program attached to {}", &iface);
 
+    let mut allow_list_v4: aya::maps::HashMap<
+        aya::maps::MapData,
+        oxidrop_common::Ipv4Packet,
+        AllowListState,
+    > = aya::maps::HashMap::try_from(
+        ebpf.take_map("ALLOW_LIST_V4")
+            .context("ALLOW_LIST_V4 map not found")?,
+    )?;
+    let mut allow_list_v6: aya::maps::HashMap<
+        aya::maps::MapData,
+        oxidrop_common::Ipv6Packet,
+        AllowListState,
+    > = aya::maps::HashMap::try_from(
+        ebpf.take_map("ALLOW_LIST_V6")
+            .context("ALLOW_LIST_V6 map not found")?,
+    )?;
+    // Spawn the background cleanup task
+    tokio::spawn(async move {
+        const TIMEOUT_NS: u64 = 10 * 60 * 1_000_000_000; // 10 minutes
+        let mut interval = tokio::time::interval(tokio::time::Duration::from_mins(10));
+
+        loop {
+            interval.tick().await;
+            let current_bpf_time = get_bpf_ktime_ns();
+            let mut keys_to_remove = Vec::new();
+
+            //  Clean up IPv4 map
+            for entry in allow_list_v4.iter() {
+                if let Ok((key, state)) = entry {
+                    if current_bpf_time.saturating_sub(state.last_seen) > TIMEOUT_NS {
+                        keys_to_remove.push(key);
+                    }
+                }
+            }
+
+            for key in keys_to_remove {
+                let _ = allow_list_v4.remove(&key);
+            }
+            //  Clean up IPv6 map
+            let mut v6_keys_to_remove = Vec::new();
+            for entry in allow_list_v6.iter() {
+                if let Ok((key, state)) = entry {
+                    if current_bpf_time.saturating_sub(state.last_seen) > TIMEOUT_NS {
+                        v6_keys_to_remove.push(key);
+                    }
+                }
+            }
+            for key in v6_keys_to_remove {
+                let _ = allow_list_v6.remove(&key);
+            }
+        }
+    });
+
     let session_store = MemoryStore::default();
     let session_layer = SessionManagerLayer::new(session_store)
         .with_secure(cfg!(not(debug_assertions))) // secure in debug off
@@ -105,4 +163,8 @@ async fn main() -> anyhow::Result<()> {
         .expect("Axum failed");
 
     Ok(())
+}
+fn get_bpf_ktime_ns() -> u64 {
+    let ts = clock_gettime(ClockId::Monotonic);
+    (ts.tv_sec as u64) * 1_000_000_000 + (ts.tv_nsec as u64)
 }

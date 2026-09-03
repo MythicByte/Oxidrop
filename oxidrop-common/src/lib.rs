@@ -5,7 +5,7 @@ use aya::Pod;
 use network_types::eth::EtherType;
 /// What to do with a list
 #[repr(C)]
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Action {
     Allow = 0,
     Deny = 1,
