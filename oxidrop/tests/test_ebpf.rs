@@ -18,6 +18,7 @@ use aya::{
 use etherparse::PacketBuilder;
 use oxidrop_common::{
     Action,
+    AllowListState,
     FirewallConfig,
     Ipv4Packet,
     Ipv6Packet,
@@ -88,10 +89,19 @@ impl XdpTestHarness {
         subnet_map.insert(&dst_key, Action::Allow, 0).unwrap();
 
         // Insert BOTH directions into allow list
-        let mut allow_list: HashMap<_, Ipv4Packet, Action> =
+        let mut allow_list: HashMap<_, Ipv4Packet, AllowListState> =
             HashMap::try_from(self.ebpf.map_mut("ALLOW_LIST_V4").unwrap()).unwrap();
 
-        allow_list.insert(flow, Action::Allow, 0).unwrap();
+        allow_list
+            .insert(
+                flow,
+                AllowListState {
+                    action: Action::Allow,
+                    last_seen: 0,
+                },
+                0,
+            )
+            .unwrap();
 
         let reverse_flow = Ipv4Packet::new(
             flow.destination_addr,
@@ -100,7 +110,16 @@ impl XdpTestHarness {
             flow.source_port,
             flow.protocol,
         );
-        allow_list.insert(reverse_flow, Action::Allow, 0).unwrap();
+        allow_list
+            .insert(
+                reverse_flow,
+                AllowListState {
+                    action: Action::Allow,
+                    last_seen: 0,
+                },
+                0,
+            )
+            .unwrap();
     }
 
     pub fn allow_ipv6_flow(&mut self, flow: Ipv6Packet) {
@@ -115,10 +134,19 @@ impl XdpTestHarness {
         subnet_map.insert(&dst_key, Action::Allow, 0).unwrap();
 
         // Insert BOTH directions into allow list
-        let mut allow_list: HashMap<_, Ipv6Packet, Action> =
+        let mut allow_list: HashMap<_, Ipv6Packet, AllowListState> =
             HashMap::try_from(self.ebpf.map_mut("ALLOW_LIST_V6").unwrap()).unwrap();
 
-        allow_list.insert(flow, Action::Allow, 0).unwrap();
+        allow_list
+            .insert(
+                flow,
+                AllowListState {
+                    action: Action::Allow,
+                    last_seen: 0,
+                },
+                0,
+            )
+            .unwrap();
 
         let reverse_flow = Ipv6Packet::new(
             flow.destination_addr,
@@ -127,11 +155,20 @@ impl XdpTestHarness {
             flow.source_port,
             flow.protocol,
         );
-        allow_list.insert(reverse_flow, Action::Allow, 0).unwrap();
+        allow_list
+            .insert(
+                reverse_flow,
+                AllowListState {
+                    action: Action::Allow,
+                    last_seen: 0,
+                },
+                0,
+            )
+            .unwrap();
     }
 
     pub fn print_allow_list(&mut self) {
-        let allow_list: HashMap<_, Ipv4Packet, Action> =
+        let allow_list: HashMap<_, Ipv4Packet, AllowListState> =
             HashMap::try_from(self.ebpf.map_mut("ALLOW_LIST_V4").unwrap()).unwrap();
 
         println!("--- ALLOW_LIST_V4 Contents ---");
@@ -142,7 +179,12 @@ impl XdpTestHarness {
                     let dst_ip = std::net::Ipv4Addr::from(key.destination_addr);
                     println!(
                         "Src IP: {}, Dst IP: {}, Src Port: {}, Dst Port: {}, Proto: {}, Action: {:?}",
-                        src_ip, dst_ip, key.source_port, key.destination_port, key.protocol, value
+                        src_ip,
+                        dst_ip,
+                        key.source_port,
+                        key.destination_port,
+                        key.protocol,
+                        value.action
                     );
                 }
                 Err(e) => eprintln!("Error iterating map: {:?}", e),
