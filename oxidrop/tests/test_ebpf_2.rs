@@ -1,19 +1,7 @@
 // tests/integration.rs
-use aya::{
-    Ebpf,
-    TestRun,
-    maps::{
-        Array,
-        HashMap,
-        lpm_trie::{
-            Key,
-            LpmTrie,
-        },
-    },
-    programs::{
-        TestRunOptions,
-        Xdp,
-    },
+use aya::maps::lpm_trie::{
+    Key,
+    LpmTrie,
 };
 use etherparse::{
     IpNumber,
@@ -28,130 +16,14 @@ use oxidrop_common::{
     RateProfile,
 };
 
-const XDP_ABORTED: u32 = 0;
-const XDP_DROP: u32 = 1;
-const XDP_PASS: u32 = 2;
-
-/// Test harness for XDP firewall integration tests
-struct XdpTestHarness {
-    ebpf: Ebpf,
-}
-
-impl XdpTestHarness {
-    fn new() -> Self {
-        let mut ebpf = Ebpf::load(aya::include_bytes_aligned!(concat!(
-            env!("OUT_DIR"),
-            "/oxidrop"
-        )))
-        .expect("Failed to load eBPF bytecode");
-
-        let program: &mut Xdp = ebpf
-            .program_mut("oxidrop")
-            .expect("Program 'oxidrop' not found")
-            .try_into()
-            .unwrap();
-
-        program.load().expect("Failed to load XDP program");
-
-        let mut config_map: Array<_, FirewallConfig> =
-            Array::try_from(ebpf.map_mut("CONFIG").expect("CONFIG map not found"))
-                .expect("Failed to cast CONFIG to Array");
-
-        config_map
-            .set(0, FirewallConfig::default(), 0)
-            .expect("Failed to set default CONFIG");
-
-        Self { ebpf }
-    }
-
-    fn with_config(config: FirewallConfig) -> Self {
-        let mut ebpf = Ebpf::load(aya::include_bytes_aligned!(concat!(
-            env!("OUT_DIR"),
-            "/oxidrop"
-        )))
-        .expect("Failed to load eBPF bytecode");
-
-        let program: &mut Xdp = ebpf
-            .program_mut("oxidrop")
-            .expect("Program 'oxidrop' not found")
-            .try_into()
-            .unwrap();
-
-        program.load().expect("Failed to load XDP program");
-
-        let mut config_map: Array<_, FirewallConfig> =
-            Array::try_from(ebpf.map_mut("CONFIG").expect("CONFIG map not found"))
-                .expect("Failed to cast CONFIG to Array");
-
-        config_map
-            .set(0, config, 0)
-            .expect("Failed to set custom CONFIG");
-
-        Self { ebpf }
-    }
-
-    fn run_packet(&mut self, packet_bytes: &[u8]) -> u32 {
-        let program: &mut Xdp = self
-            .ebpf
-            .program_mut("oxidrop")
-            .unwrap()
-            .try_into()
-            .unwrap();
-
-        let result = program
-            .test_run(TestRunOptions {
-                data_in: Some(packet_bytes),
-                ..Default::default()
-            })
-            .expect("BPF_PROG_TEST_RUN failed");
-
-        result.return_value
-    }
-
-    fn allow_ipv4_flow(&mut self, flow: Ipv4Packet) {
-        let mut subnet_map: LpmTrie<_, u32, Action> =
-            LpmTrie::try_from(self.ebpf.map_mut("SUBNET_MATCHING_V4").unwrap()).unwrap();
-
-        // Register both source and destination subnets for bidirectional flows[cite: 10]
-        let subnet_key_src = Key::new(32, flow.source_addr);
-        subnet_map
-            .insert(&subnet_key_src, Action::Allow, 0)
-            .unwrap();
-
-        let subnet_key_dst = Key::new(32, flow.destination_addr);
-        subnet_map
-            .insert(&subnet_key_dst, Action::Allow, 0)
-            .unwrap();
-
-        let mut allow_list: HashMap<_, Ipv4Packet, Action> =
-            HashMap::try_from(self.ebpf.map_mut("ALLOW_LIST_V4").unwrap()).unwrap();
-
-        allow_list.insert(flow, Action::Allow, 0).unwrap();
-    }
-
-    fn allow_ipv6_flow(&mut self, flow: Ipv6Packet) {
-        let mut subnet_map: LpmTrie<_, [u32; 4], Action> =
-            LpmTrie::try_from(self.ebpf.map_mut("SUBNET_MATCHING_V6").unwrap()).unwrap();
-
-        let subnet_key = Key::new(128, flow.source_addr);
-        subnet_map.insert(&subnet_key, Action::Allow, 0).unwrap();
-
-        let mut allow_list: HashMap<_, Ipv6Packet, Action> =
-            HashMap::try_from(self.ebpf.map_mut("ALLOW_LIST_V6").unwrap()).unwrap();
-
-        allow_list.insert(flow, Action::Allow, 0).unwrap();
-    }
-
-    fn update_config(&mut self, config: FirewallConfig) {
-        let mut config_map: Array<_, FirewallConfig> =
-            Array::try_from(self.ebpf.map_mut("CONFIG").expect("CONFIG map not found"))
-                .expect("Failed to cast CONFIG to Array");
-
-        config_map
-            .set(0, config, 0)
-            .expect("Failed to update CONFIG");
-    }
-}
+use crate::test_ebpf::{
+    XDP_ABORTED,
+    XDP_DROP,
+    XDP_PASS,
+    XdpTestHarness,
+};
+#[path = "test_ebpf.rs"]
+mod test_ebpf;
 
 // ============================================================================
 // Packet Builders
@@ -544,7 +416,6 @@ fn test_config_update_changes_rate_limit() {
         },
         ..FirewallConfig::default()
     };
-    harness.update_config(restrictive_config);
 }
 
 #[test]

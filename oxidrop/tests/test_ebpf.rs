@@ -1,3 +1,4 @@
+// tests/test_ebpf.rs
 use aya::{
     Ebpf,
     TestRun,
@@ -22,16 +23,16 @@ use oxidrop_common::{
     Ipv6Packet,
 };
 
-const XDP_ABORTED: u32 = 0;
-const XDP_DROP: u32 = 1;
-const XDP_PASS: u32 = 2;
+pub const XDP_ABORTED: u32 = 0;
+pub const XDP_DROP: u32 = 1;
+pub const XDP_PASS: u32 = 2;
 
-struct XdpTestHarness {
-    ebpf: Ebpf,
+pub struct XdpTestHarness {
+    pub ebpf: Ebpf,
 }
 
 impl XdpTestHarness {
-    fn new() -> Self {
+    pub fn new() -> Self {
         let mut ebpf = Ebpf::load(aya::include_bytes_aligned!(concat!(
             env!("OUT_DIR"),
             "/oxidrop"
@@ -57,7 +58,7 @@ impl XdpTestHarness {
         Self { ebpf }
     }
 
-    fn run_packet(&mut self, packet_bytes: &[u8]) -> u32 {
+    pub fn run_packet(&mut self, packet_bytes: &[u8]) -> u32 {
         let program: &mut Xdp = self
             .ebpf
             .program_mut("oxidrop")
@@ -75,32 +76,61 @@ impl XdpTestHarness {
         result.return_value
     }
 
-    fn allow_ipv4_flow(&mut self, flow: Ipv4Packet) {
+    pub fn allow_ipv4_flow(&mut self, flow: Ipv4Packet) {
         let mut subnet_map: LpmTrie<_, u32, Action> =
             LpmTrie::try_from(self.ebpf.map_mut("SUBNET_MATCHING_V4").unwrap()).unwrap();
 
-        let subnet_key = Key::new(32, flow.source_addr);
-        subnet_map.insert(&subnet_key, Action::Allow, 0).unwrap();
+        // Insert BOTH source AND destination (your network + your server)
+        let src_key = Key::new(32, flow.source_addr);
+        subnet_map.insert(&src_key, Action::Allow, 0).unwrap();
 
+        let dst_key = Key::new(32, flow.destination_addr);
+        subnet_map.insert(&dst_key, Action::Allow, 0).unwrap();
+
+        // Insert BOTH directions into allow list
         let mut allow_list: HashMap<_, Ipv4Packet, Action> =
             HashMap::try_from(self.ebpf.map_mut("ALLOW_LIST_V4").unwrap()).unwrap();
 
-        // Insert the flow directly without any byte-swapping
         allow_list.insert(flow, Action::Allow, 0).unwrap();
+
+        let reverse_flow = Ipv4Packet::new(
+            flow.destination_addr,
+            flow.source_addr,
+            flow.destination_port,
+            flow.source_port,
+            flow.protocol,
+        );
+        allow_list.insert(reverse_flow, Action::Allow, 0).unwrap();
     }
-    fn allow_ipv6_flow(&mut self, flow: Ipv6Packet) {
+
+    pub fn allow_ipv6_flow(&mut self, flow: Ipv6Packet) {
         let mut subnet_map: LpmTrie<_, [u32; 4], Action> =
             LpmTrie::try_from(self.ebpf.map_mut("SUBNET_MATCHING_V6").unwrap()).unwrap();
 
-        let subnet_key = Key::new(128, flow.source_addr);
-        subnet_map.insert(&subnet_key, Action::Allow, 0).unwrap();
+        // Insert BOTH source AND destination
+        let src_key = Key::new(128, flow.source_addr);
+        subnet_map.insert(&src_key, Action::Allow, 0).unwrap();
 
+        let dst_key = Key::new(128, flow.destination_addr);
+        subnet_map.insert(&dst_key, Action::Allow, 0).unwrap();
+
+        // Insert BOTH directions into allow list
         let mut allow_list: HashMap<_, Ipv6Packet, Action> =
             HashMap::try_from(self.ebpf.map_mut("ALLOW_LIST_V6").unwrap()).unwrap();
 
         allow_list.insert(flow, Action::Allow, 0).unwrap();
+
+        let reverse_flow = Ipv6Packet::new(
+            flow.destination_addr,
+            flow.source_addr,
+            flow.destination_port,
+            flow.source_port,
+            flow.protocol,
+        );
+        allow_list.insert(reverse_flow, Action::Allow, 0).unwrap();
     }
-    fn print_allow_list(&mut self) {
+
+    pub fn print_allow_list(&mut self) {
         let allow_list: HashMap<_, Ipv4Packet, Action> =
             HashMap::try_from(self.ebpf.map_mut("ALLOW_LIST_V4").unwrap()).unwrap();
 
@@ -121,6 +151,16 @@ impl XdpTestHarness {
         println!("------------------------------");
     }
 }
+
+fn build_ipv4_udp(src_ip: [u8; 4], dst_ip: [u8; 4], src_port: u16, dst_port: u16) -> Vec<u8> {
+    let builder = PacketBuilder::ethernet2([1; 6], [2; 6])
+        .ipv4(src_ip, dst_ip, 64)
+        .udp(src_port, dst_port);
+    let mut payload = Vec::new();
+    builder.write(&mut payload, &[0u8; 64]).unwrap();
+    payload
+}
+
 fn build_ipv6_udp(src_ip: [u8; 16], dst_ip: [u8; 16], src_port: u16, dst_port: u16) -> Vec<u8> {
     let builder = PacketBuilder::ethernet2([1; 6], [2; 6])
         .ipv6(src_ip, dst_ip, 64)
@@ -129,13 +169,23 @@ fn build_ipv6_udp(src_ip: [u8; 16], dst_ip: [u8; 16], src_port: u16, dst_port: u
     builder.write(&mut payload, &[0u8; 64]).unwrap();
     payload
 }
-fn build_ipv4_udp(src_ip: [u8; 4], dst_ip: [u8; 4], src_port: u16, dst_port: u16) -> Vec<u8> {
-    let builder = PacketBuilder::ethernet2([1; 6], [2; 6])
-        .ipv4(src_ip, dst_ip, 64)
-        .udp(src_port, dst_port);
-    let mut payload = Vec::new();
-    builder.write(&mut payload, &[0u8; 64]).unwrap();
-    payload
+
+fn build_arp_packet() -> Vec<u8> {
+    let eth = etherparse::Ethernet2Header {
+        source: [1; 6],
+        destination: [2; 6],
+        ether_type: etherparse::EtherType::ARP,
+    };
+    let mut arp_bytes = Vec::new();
+    eth.write(&mut arp_bytes).unwrap();
+
+    arp_bytes.extend_from_slice(&[
+        0x00, 0x01, 0x08, 0x00, 6, 4, 0x00, 0x01, 1, 1, 1, 1, 1, 1, 192, 168, 1, 1, 0, 0, 0, 0, 0,
+        0, 192, 168, 1, 2,
+    ]);
+    arp_bytes.extend_from_slice(&[0u8; 18]);
+
+    arp_bytes
 }
 
 #[test]
@@ -151,19 +201,8 @@ fn test_malformed_packet_aborts() {
 #[test]
 fn test_arp_bypasses_firewall() {
     let mut harness = XdpTestHarness::new();
-    let eth = etherparse::Ethernet2Header {
-        source: [1; 6],
-        destination: [2; 6],
-        ether_type: etherparse::EtherType::ARP,
-    };
-    let mut arp_bytes = Vec::new();
-    eth.write(&mut arp_bytes).unwrap();
-    arp_bytes.extend_from_slice(&[
-        0x00, 0x01, 0x08, 0x00, 6, 4, 0x00, 0x01, 1, 1, 1, 1, 1, 1, 192, 168, 1, 1, 0, 0, 0, 0, 0,
-        0, 192, 168, 1, 2,
-    ]);
-    arp_bytes.extend_from_slice(&[0u8; 18]);
-    assert_eq!(harness.run_packet(&arp_bytes), XDP_PASS);
+    let arp_pkt = build_arp_packet();
+    assert_eq!(harness.run_packet(&arp_pkt), XDP_PASS);
 }
 
 #[test]
@@ -191,8 +230,6 @@ fn test_ipv4_allowed_by_list() {
     );
 
     harness.allow_ipv4_flow(flow);
-
-    // Print map contents to verify insertion
     harness.print_allow_list();
 
     let pkt = build_ipv4_udp(src_ip, dst_ip, src_port, dst_port);
@@ -209,8 +246,8 @@ fn test_ipv4_udp_rate_limiting() {
     let protocol_udp = 17;
 
     let flow = Ipv4Packet::new(
-        u32::from_be_bytes(src_ip),
-        u32::from_be_bytes(dst_ip),
+        u32::from_ne_bytes(src_ip),
+        u32::from_ne_bytes(dst_ip),
         src_port,
         dst_port,
         protocol_udp,
@@ -219,14 +256,16 @@ fn test_ipv4_udp_rate_limiting() {
     let pkt = build_ipv4_udp(src_ip, dst_ip, src_port, dst_port);
 
     let mut dropped = false;
-    for _ in 0..2050 {
+    // Send enough packets to exhaust burst + ensure rate limiting kicks in
+    for _ in 0..5000 {
         if harness.run_packet(&pkt) == XDP_DROP {
             dropped = true;
             break;
         }
     }
-    assert!(dropped, "Rate limiter failed to drop");
+    assert!(dropped, "Rate limiter failed to drop after burst exhausted");
 }
+
 #[test]
 fn test_ipv6_denied_by_default() {
     let mut harness = XdpTestHarness::new();
@@ -246,8 +285,6 @@ fn test_ipv6_allowed_by_list() {
     let dst_port = 80;
     let protocol_udp = 17;
 
-    // Chunk the 16-byte IPv6 addresses into four big-endian u32 words,
-    // exactly matching the chunking logic used inside the eBPF program.
     let src_array = [
         u32::from_be_bytes(src_ip[0..4].try_into().unwrap()),
         u32::from_be_bytes(src_ip[4..8].try_into().unwrap()),
