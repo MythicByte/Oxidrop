@@ -186,13 +186,6 @@ fn xdp_firewall(ctx: XdpContext) -> Result<u32, FirewallError> {
                     _ => (0, 0, false),
                 }
             };
-            let flow_key = Ipv4Packet::new(
-                u32::from_ne_bytes(source_addr.octets()),
-                u32::from_ne_bytes(dest_addr.octets()),
-                source_port,
-                dest_port,
-                protocol.into(), // Safely converts to u8
-            );
             let flow_key_direction = match direction {
                 TraficDirection::Incoming => {
                     let reverse_flow_key = Ipv4Packet::new(
@@ -215,7 +208,7 @@ fn xdp_firewall(ctx: XdpContext) -> Result<u32, FirewallError> {
                     flow_key
                 }
             };
-            let subnet_key_v4 = Key::new(32, flow_key.source_addr);
+            let subnet_key_v4 = Key::new(32, flow_key_direction.source_addr);
             match SUBNET_MATCHING_V4.get(&subnet_key_v4) {
                 Some(Action::Allow) => (),
                 _ => return Err(FirewallError::DeniedByPolicy),
@@ -445,7 +438,11 @@ fn xdp_firewall(ctx: XdpContext) -> Result<u32, FirewallError> {
                     flow_key
                 }
             };
-            let subnet_key_v6 = Key::new(128, src_array);
+            let subnet_key = match direction {
+                TraficDirection::Incoming => dst_array,
+                TraficDirection::Outgoing => src_array,
+            };
+            let subnet_key_v6 = Key::new(128, subnet_key);
             match SUBNET_MATCHING_V6.get(&subnet_key_v6) {
                 Some(Action::Allow) => (),
                 _ => return Err(FirewallError::DeniedByPolicy),
