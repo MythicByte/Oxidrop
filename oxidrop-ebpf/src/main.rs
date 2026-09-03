@@ -18,6 +18,7 @@ use aya_ebpf::{
     },
     programs::XdpContext,
 };
+use aya_log_ebpf::error;
 use network_types::{
     eth::{
         EthHdr,
@@ -116,7 +117,10 @@ pub fn oxidrop(ctx: XdpContext) -> u32 {
     match xdp_firewall(ctx) {
         Ok(ret) => ret,
         // if error packet is thrown out
-        Err(FirewallError::OutOfBounds) => xdp_action::XDP_ABORTED,
+        Err(FirewallError::OutOfBounds) => {
+            error!(ctx, "Out of bounds read happend");
+            xdp_action::XDP_ABORTED
+        }
         Err(FirewallError::RateLimited) => xdp_action::XDP_DROP,
         Err(FirewallError::DeniedByPolicy) => xdp_action::XDP_DROP,
         // errors we ignore
