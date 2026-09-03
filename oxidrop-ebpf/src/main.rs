@@ -101,10 +101,6 @@ static PACKET_COUNTS_V4: LruHashMap<Ipv4Packet, TokenBucketState> =
 static PACKET_COUNTS_V6: LruHashMap<Ipv6Packet, TokenBucketState> =
     LruHashMap::with_max_entries(4096, 0);
 
-/// Events: pushed to userspace whenever we drop a source for the first time.
-#[map]
-static BLOCKED_EVENTS: RingBuf = RingBuf::with_byte_size(256 * 1024, 0);
-
 /// IPv4 Subnet Matching (Key is a 32-bit integer)
 #[map]
 static SUBNET_MATCHING_V4: LpmTrie<u32, Action> = LpmTrie::with_max_entries(2048, 0);
