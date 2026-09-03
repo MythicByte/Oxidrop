@@ -25,11 +25,14 @@ use network_types::{
         EtherType,
     },
     ip::{
+        IpProto,
         Ipv4Hdr,
         Ipv6Hdr,
     },
+    tcp::TcpHdr,
     udp::UdpHdr,
 };
+use num_traits::FromPrimitive;
 use oxidrop_common::{
     Action,
     ActivaterEtherTypes,
@@ -37,17 +40,38 @@ use oxidrop_common::{
     FirewallError,
     Ipv4Packet,
     Ipv6Packet,
+    RateProfile,
     TokenBucketState,
 };
 
 const DEFAULT_CONFIG: FirewallConfig = FirewallConfig {
-    rate_ns: 1_000_000,
-    burst: 1000,
     protcol_allowed: ActivaterEtherTypes::union(
         ActivaterEtherTypes::IPV4,
         ActivaterEtherTypes::IPV6,
     ),
     ddos_activated: true,
+    tcp_profile: RateProfile {
+        rate_shift: 20,
+        burst: 1000,
+    },
+
+    // UDP: Games, QUIC, DNS. Generous burst and faster ~2000 pps refill.
+    udp_profile: RateProfile {
+        rate_shift: 19,
+        burst: 2000,
+    },
+
+    // ICMP: Pings. Strictly clamped to ~15 pps with a tiny burst.
+    icmp_profile: RateProfile {
+        rate_shift: 26,
+        burst: 10,
+    },
+
+    // Fallback: Conservative limits for unsupported/weird protocols.
+    default_profile: RateProfile {
+        rate_shift: 23,
+        burst: 100,
+    },
 };
 
 /// Usersapce config
@@ -126,17 +150,30 @@ fn xdp_firewall(ctx: XdpContext) -> Result<u32, FirewallError> {
 
             let source_addr = unsafe { *ipv4hdr }.src_addr();
             let dest_addr = unsafe { *ipv4hdr }.dst_addr();
-
-            let (source_port, dest_port) = {
-                let udphdr: *const UdpHdr = unsafe {
-                    ptr_at(&ctx, EthHdr::LEN + Ipv4Hdr::LEN).map_err(|_| FirewallError::OutOfBounds)
-                }?;
-                (unsafe { *udphdr }.src_port(), unsafe { *udphdr }.dst_port())
-            };
-
             let protocol = unsafe { *ipv4hdr }
                 .proto()
                 .map_err(|_| FirewallError::OutOfBounds)?;
+            let ip_header_len_ipv4_ihl = unsafe { (*ipv4hdr).ihl() } as usize * 4;
+            let (source_port, dest_port) = {
+                match protocol {
+                    IpProto::Tcp => {
+                        let tcphdr: *const TcpHdr =
+                            unsafe { ptr_at(&ctx, EthHdr::LEN + ip_header_len_ipv4_ihl) }
+                                .map_err(|_| FirewallError::OutOfBounds)?;
+                        (
+                            u16::from_be_bytes(unsafe { (*tcphdr).source }),
+                            u16::from_be_bytes(unsafe { (*tcphdr).dest }),
+                        )
+                    }
+                    IpProto::Udp => {
+                        let udphdr: *const UdpHdr =
+                            unsafe { ptr_at(&ctx, EthHdr::LEN + ip_header_len_ipv4_ihl) }
+                                .map_err(|_| FirewallError::OutOfBounds)?;
+                        unsafe { ((*udphdr).src_port(), (*udphdr).dst_port()) }
+                    }
+                    _ => (0, 0),
+                }
+            };
 
             let flow_key = Ipv4Packet::new(
                 u32::from_be(source_addr.into()),
@@ -172,34 +209,29 @@ fn xdp_firewall(ctx: XdpContext) -> Result<u32, FirewallError> {
 
             let config = CONFIG.get(0).unwrap_or(&DEFAULT_CONFIG);
 
+            let active_profile = match protocol {
+                IpProto::Tcp => &config.tcp_profile,
+                IpProto::Udp => &config.udp_profile,
+                IpProto::Icmp => &config.icmp_profile,
+                _ => &config.default_profile,
+            };
+
             // Fetch or initialize token bucket state for IPv4
             let mut bucket = unsafe {
                 PACKET_COUNTS_V4
                     .get(&flow_key)
                     .copied()
                     .unwrap_or(TokenBucketState {
-                        tokens: config.burst,
+                        tokens: active_profile.burst,
                         last_update: now,
                     })
             };
 
-            // Calculate token refill based on elapsed time
-            let elapsed = now.saturating_sub(bucket.last_update);
-            let generated_tokens = elapsed / config.rate_ns;
-
-            if generated_tokens > 0 {
-                bucket.tokens = (bucket.tokens + generated_tokens).min(config.burst);
-                bucket.last_update = now;
-            }
-
-            // Consume a token or drop the packet
-            if bucket.tokens > 0 {
-                bucket.tokens -= 1;
-                let _ = PACKET_COUNTS_V4.insert(&flow_key, bucket, 0);
+            if evaluate_bucket(&mut bucket, active_profile, now).is_ok() {
+                let _ = PACKET_COUNTS_V4.insert(&flow_key, &bucket, 0);
                 Ok(xdp_action::XDP_PASS)
             } else {
-                // Keep the last update timestamp even when rate-limited
-                let _ = PACKET_COUNTS_V4.insert(&flow_key, bucket, 0);
+                let _ = PACKET_COUNTS_V4.insert(&flow_key, &bucket, 0);
                 Err(FirewallError::RateLimited)
             }
         }
@@ -217,28 +249,90 @@ fn xdp_firewall(ctx: XdpContext) -> Result<u32, FirewallError> {
                 dst_array[i] = ((segs_dst[i * 2] as u32) << 16) | (segs_dst[i * 2 + 1] as u32);
             }
 
-            let (source_port, dest_port) = {
-                let udphdr: *const UdpHdr = unsafe { ptr_at(&ctx, EthHdr::LEN + Ipv6Hdr::LEN) }
-                    .map_err(|_| FirewallError::OutOfBounds)?;
-                unsafe { ((*udphdr).src_port(), (*udphdr).dst_port()) }
-            };
-
-            let protocol =
+            let protocol_first =
                 unsafe { (*ipv6hdr).next_hdr() }.map_err(|_| FirewallError::OutOfBounds)?;
 
+            let mut current_offset = EthHdr::LEN + Ipv6Hdr::LEN;
+            let mut next_proto: IpProto = protocol_first.into();
+            let mut found_l4 = false;
+            // Bounded loop to safely walk extension headers
+            for _ in 0..6 {
+                match next_proto {
+                    IpProto::Tcp | IpProto::Udp | IpProto::Ipv6Icmp => {
+                        found_l4 = true;
+                        break;
+                    }
+                    IpProto::HopOpt | IpProto::Ipv6Route | IpProto::Ipv6Opts => {
+                        let ext_hdr: *const [u8; 2] = unsafe {
+                            ptr_at(&ctx, current_offset).map_err(|_| FirewallError::OutOfBounds)?
+                        };
+                        let value = unsafe { (*ext_hdr)[0] };
+                        let Some(parsed) = IpProto::from_u8(value) else {
+                            break;
+                        };
+                        next_proto = parsed;
+                        let ext_len = unsafe { (*ext_hdr)[1] };
+                        current_offset += (ext_len as usize + 1) * 8;
+                    }
+                    IpProto::Ipv6Frag => {
+                        let ext_hdr: *const [u8; 2] = unsafe {
+                            ptr_at(&ctx, current_offset).map_err(|_| FirewallError::OutOfBounds)?
+                        };
+                        let value = unsafe { (*ext_hdr)[0] };
+                        let Some(parsed) = IpProto::from_u8(value) else {
+                            break;
+                        };
+                        next_proto = parsed;
+                        current_offset += 8;
+                    }
+                    IpProto::Ah => {
+                        let ext_hdr: *const [u8; 2] = unsafe {
+                            ptr_at(&ctx, current_offset).map_err(|_| FirewallError::OutOfBounds)?
+                        };
+                        let value = unsafe { (*ext_hdr)[0] };
+                        let Some(parsed) = IpProto::from_u8(value) else {
+                            break;
+                        };
+                        next_proto = parsed;
+                        let ext_len = unsafe { (*ext_hdr)[1] };
+                        current_offset += (ext_len as usize + 2) * 4;
+                    }
+                    _ => break,
+                }
+            }
+            let (source_port, dest_port) = if found_l4 {
+                match next_proto {
+                    IpProto::Tcp => {
+                        let tcphdr: *const TcpHdr = unsafe { ptr_at(&ctx, current_offset) }
+                            .map_err(|_| FirewallError::OutOfBounds)?;
+                        (
+                            u16::from_be_bytes(unsafe { (*tcphdr).source }),
+                            u16::from_be_bytes(unsafe { (*tcphdr).dest }),
+                        )
+                    }
+                    IpProto::Udp => {
+                        let udphdr: *const UdpHdr = unsafe { ptr_at(&ctx, current_offset) }
+                            .map_err(|_| FirewallError::OutOfBounds)?;
+                        unsafe { ((*udphdr).src_port(), (*udphdr).dst_port()) }
+                    }
+                    _ => (0, 0),
+                }
+            } else {
+                (0, 0)
+            };
             let flow_key = Ipv6Packet::new(
                 src_array,
                 dst_array,
                 source_port,
                 dest_port,
-                protocol.into(),
+                next_proto.into(),
             );
             let reverse_flow_key = Ipv6Packet::new(
                 dst_array,
                 src_array,
                 dest_port,
                 source_port,
-                protocol.into(),
+                next_proto.into(),
             );
             let subnet_key_v6 = Key::new(128, ipv6_be_words(segs_src));
             match SUBNET_MATCHING_V6.get(&subnet_key_v6) {
@@ -259,34 +353,29 @@ fn xdp_firewall(ctx: XdpContext) -> Result<u32, FirewallError> {
 
             let config = CONFIG.get(0).unwrap_or(&DEFAULT_CONFIG);
 
+            let active_profile = match next_proto {
+                IpProto::Tcp => &config.tcp_profile,
+                IpProto::Udp => &config.udp_profile,
+                IpProto::Icmp => &config.icmp_profile,
+                _ => &config.default_profile,
+            };
+
             // Fetch or initialize token bucket state for IPv4
             let mut bucket = unsafe {
                 PACKET_COUNTS_V6
                     .get(&flow_key)
                     .copied()
                     .unwrap_or(TokenBucketState {
-                        tokens: config.burst,
+                        tokens: active_profile.burst,
                         last_update: now,
                     })
             };
 
-            // Calculate token refill based on elapsed time
-            let elapsed = now.saturating_sub(bucket.last_update);
-            let generated_tokens = elapsed / config.rate_ns;
-
-            if generated_tokens > 0 {
-                bucket.tokens = (bucket.tokens + generated_tokens).min(config.burst);
-                bucket.last_update = now;
-            }
-
-            // Consume a token or drop the packet
-            if bucket.tokens > 0 {
-                bucket.tokens -= 1;
-                let _ = PACKET_COUNTS_V6.insert(&flow_key, bucket, 0);
+            if evaluate_bucket(&mut bucket, active_profile, now).is_ok() {
+                let _ = PACKET_COUNTS_V6.insert(&flow_key, &bucket, 0);
                 Ok(xdp_action::XDP_PASS)
             } else {
-                // Keep the last update timestamp even when rate-limited
-                let _ = PACKET_COUNTS_V6.insert(&flow_key, bucket, 0);
+                let _ = PACKET_COUNTS_V6.insert(&flow_key, &bucket, 0);
                 Err(FirewallError::RateLimited)
             }
         }
@@ -304,6 +393,28 @@ fn xdp_firewall(ctx: XdpContext) -> Result<u32, FirewallError> {
             // protocol not supported
             return Err(FirewallError::UnsupportedProtocol);
         }
+    }
+}
+#[inline(always)]
+fn evaluate_bucket(
+    bucket: &mut TokenBucketState,
+    active_rateprofil: &RateProfile,
+    now: u64,
+) -> Result<u32, FirewallError> {
+    let elapsed = now.saturating_sub(bucket.last_update);
+
+    let generated_tokens = elapsed >> active_rateprofil.rate_shift;
+
+    if generated_tokens > 0 {
+        bucket.tokens = (bucket.tokens + generated_tokens).min(active_rateprofil.burst);
+        bucket.last_update = now;
+    }
+
+    if bucket.tokens > 0 {
+        bucket.tokens -= 1;
+        Ok(xdp_action::XDP_PASS)
+    } else {
+        Err(FirewallError::RateLimited)
     }
 }
 #[inline(always)]

@@ -45,12 +45,21 @@ bitflags::bitflags! {
         const IEEE8021AD  = 1 << 5;
     }
 }
+/// Bucket State for Rate Limiting
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct RateProfile {
+    pub rate_shift: u64,
+    pub burst: u64,
+}
 // Configuration provided by Userspace
 #[repr(C)]
 #[derive(Clone, Copy)]
 pub struct FirewallConfig {
-    pub rate_ns: u64, // Nanoseconds per token
-    pub burst: u64,   // Max tokens (bucket size)
+    pub tcp_profile: RateProfile,
+    pub udp_profile: RateProfile,
+    pub icmp_profile: RateProfile,
+    pub default_profile: RateProfile,
     pub protcol_allowed: ActivaterEtherTypes,
     /// if ddos protection is on
     pub ddos_activated: bool,
@@ -62,8 +71,8 @@ pub struct FirewallConfig {
 #[derive(Clone, Copy)]
 pub struct Ipv4Packet {
     pub source_addr: u32,      // 4 bytes (Source IP)
-    pub source_port: u16,      // 2 bytes (Source Port)
     pub destination_addr: u32, // 4 bytes (Destination IP)
+    pub source_port: u16,      // 2 bytes (Source Port)
     pub destination_port: u16, // 2 bytes (Destination Port)
     pub protocol: u8,          // 1 byte  (Protocol - TCP/UDP)
     pub _pad: u8,              // 1 byte  - ZERO THIS OUT
@@ -97,8 +106,8 @@ impl Ipv4Packet {
 #[derive(Clone, Copy)]
 pub struct Ipv6Packet {
     pub source_addr: [u32; 4],      // 16 bytes
-    pub source_port: u16,           // 2 bytes
     pub destination_addr: [u32; 4], // 16 bytes
+    pub source_port: u16,           // 2 bytes
     pub destination_port: u16,      // 2 bytes
     pub protocol: u8,               // 1 byte
     pub _pad: [u8; 3],              // 3 bytes - ZERO THIS OUT (Ensures 4-byte alignment)
@@ -126,10 +135,31 @@ impl Ipv6Packet {
 impl Default for FirewallConfig {
     fn default() -> Self {
         Self {
-            rate_ns: Default::default(),
-            burst: Default::default(),
             protcol_allowed: ActivaterEtherTypes::IPV4 | ActivaterEtherTypes::IPV6,
             ddos_activated: true,
+            // TCP: Standard web traffic. ~1000 pps refill.
+            tcp_profile: RateProfile {
+                rate_shift: 20,
+                burst: 1000,
+            },
+
+            // UDP: Games, QUIC, DNS. Generous burst and faster ~2000 pps refill.
+            udp_profile: RateProfile {
+                rate_shift: 19,
+                burst: 2000,
+            },
+
+            // ICMP: Pings. Strictly clamped to ~15 pps with a tiny burst.
+            icmp_profile: RateProfile {
+                rate_shift: 26,
+                burst: 10,
+            },
+
+            // Fallback: Conservative limits for unsupported/weird protocols.
+            default_profile: RateProfile {
+                rate_shift: 23,
+                burst: 100,
+            },
         }
     }
 }

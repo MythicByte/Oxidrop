@@ -932,6 +932,7 @@ dependencies = [
  "aya-ebpf",
  "aya-log-ebpf",
  "network-types",
+ "num-traits",
  "oxidrop-common",
  "which 6.0.3",
 ]
