@@ -222,8 +222,8 @@ fn test_ipv4_allowed_by_list() {
     let protocol_udp = 17;
 
     let flow = Ipv4Packet::new(
-        u32::from_ne_bytes(src_ip),
-        u32::from_ne_bytes(dst_ip),
+        u32::from_be_bytes(src_ip),
+        u32::from_be_bytes(dst_ip),
         src_port,
         dst_port,
         protocol_udp,
@@ -246,8 +246,8 @@ fn test_ipv4_udp_rate_limiting() {
     let protocol_udp = 17;
 
     let flow = Ipv4Packet::new(
-        u32::from_ne_bytes(src_ip),
-        u32::from_ne_bytes(dst_ip),
+        u32::from_be_bytes(src_ip),
+        u32::from_be_bytes(dst_ip),
         src_port,
         dst_port,
         protocol_udp,

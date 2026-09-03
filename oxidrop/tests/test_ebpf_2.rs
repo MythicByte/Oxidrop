@@ -166,8 +166,8 @@ fn test_ipv4_allowed_by_exact_flow() {
     let protocol = 17u8;
 
     let flow = Ipv4Packet::new(
-        u32::from_ne_bytes(src_ip),
-        u32::from_ne_bytes(dst_ip),
+        u32::from_be_bytes(src_ip),
+        u32::from_be_bytes(dst_ip),
         src_port,
         dst_port,
         protocol,
@@ -190,8 +190,8 @@ fn test_ipv4_reverse_flow_allowed() {
     let protocol = 17u8;
 
     let flow = Ipv4Packet::new(
-        u32::from_ne_bytes(src_ip),
-        u32::from_ne_bytes(dst_ip),
+        u32::from_be_bytes(src_ip),
+        u32::from_be_bytes(dst_ip),
         src_port,
         dst_port,
         protocol,
@@ -213,8 +213,8 @@ fn test_ipv4_rate_limiting_drops_after_burst() {
     let protocol = 17u8;
 
     let flow = Ipv4Packet::new(
-        u32::from_ne_bytes(src_ip),
-        u32::from_ne_bytes(dst_ip),
+        u32::from_be_bytes(src_ip),
+        u32::from_be_bytes(dst_ip),
         src_port,
         dst_port,
         protocol,
@@ -252,8 +252,8 @@ fn test_ipv4_rate_limit_token_refill() {
     let protocol = 6u8;
 
     let flow = Ipv4Packet::new(
-        u32::from_ne_bytes(src_ip),
-        u32::from_ne_bytes(dst_ip),
+        u32::from_be_bytes(src_ip),
+        u32::from_be_bytes(dst_ip),
         src_port,
         dst_port,
         protocol,
@@ -299,8 +299,8 @@ fn test_ipv4_subnet_matching_slash24() {
     subnet_map.insert(&subnet_key, Action::Allow, 0).unwrap();
 
     let flow = Ipv4Packet::new(
-        u32::from_ne_bytes([192, 168, 1, 100]),
-        u32::from_ne_bytes([10, 0, 0, 1]),
+        u32::from_be_bytes([192, 168, 1, 100]),
+        u32::from_be_bytes([10, 0, 0, 1]),
         12345,
         80,
         17,
@@ -355,8 +355,8 @@ fn test_ipv4_allow_list_lru_eviction() {
         let dst_ip = [10, 0, 0, 1];
 
         let flow = Ipv4Packet::new(
-            u32::from_ne_bytes(src_ip),
-            u32::from_ne_bytes(dst_ip),
+            u32::from_be_bytes(src_ip),
+            u32::from_be_bytes(dst_ip),
             12345,
             80,
             17,
@@ -372,8 +372,8 @@ fn test_ipv4_allow_list_lru_eviction() {
         let dst_ip = [10, 0, 0, 1];
 
         let flow = Ipv4Packet::new(
-            u32::from_ne_bytes(src_ip),
-            u32::from_ne_bytes(dst_ip),
+            u32::from_be_bytes(src_ip),
+            u32::from_be_bytes(dst_ip),
             12345,
             80,
             17,
@@ -393,8 +393,8 @@ fn test_config_update_changes_rate_limit() {
     let protocol = 17u8;
 
     let flow = Ipv4Packet::new(
-        u32::from_ne_bytes(src_ip),
-        u32::from_ne_bytes(dst_ip),
+        u32::from_be_bytes(src_ip),
+        u32::from_be_bytes(dst_ip),
         src_port,
         dst_port,
         protocol,
@@ -419,8 +419,8 @@ fn test_tcp_uses_tcp_rate_profile() {
     let protocol = 6u8;
 
     let flow = Ipv4Packet::new(
-        u32::from_ne_bytes(src_ip),
-        u32::from_ne_bytes(dst_ip),
+        u32::from_be_bytes(src_ip),
+        u32::from_be_bytes(dst_ip),
         src_port,
         dst_port,
         protocol,
@@ -501,8 +501,8 @@ fn test_ipv4_port_zero_edge_case() {
     let protocol = 17u8;
 
     let flow = Ipv4Packet::new(
-        u32::from_ne_bytes(src_ip),
-        u32::from_ne_bytes(dst_ip),
+        u32::from_be_bytes(src_ip),
+        u32::from_be_bytes(dst_ip),
         src_port,
         dst_port,
         protocol,
@@ -528,8 +528,8 @@ fn test_concurrent_flow_tracking() {
 
     for (src, dst, sport, dport) in &flows {
         let flow = Ipv4Packet::new(
-            u32::from_ne_bytes(*src),
-            u32::from_ne_bytes(*dst),
+            u32::from_be_bytes(*src),
+            u32::from_be_bytes(*dst),
             *sport,
             *dport,
             17,
