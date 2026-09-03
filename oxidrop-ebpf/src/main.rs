@@ -258,7 +258,7 @@ fn xdp_firewall(ctx: XdpContext) -> Result<u32, FirewallError> {
             };
 
             // Fetch or initialize token bucket state for IPv4
-            let mut bucket = unsafe {
+            let bucket = unsafe {
                 PACKET_COUNTS_V4
                     .get(&flow_key_direction)
                     .copied()
@@ -268,33 +268,14 @@ fn xdp_firewall(ctx: XdpContext) -> Result<u32, FirewallError> {
                     })
             };
 
-            if config.ddos_activated {
-                if evaluate_bucket(&mut bucket, active_profile, now).is_ok() {
-                    let _ = PACKET_COUNTS_V4.insert(&flow_key_direction, &bucket, 0);
-                    let target_ifindex = config.output_ethernet_adapter;
-                    if let Some(ethernet_rederect) = target_ifindex {
-                        unsafe {
-                            aya_ebpf::helpers::bpf_redirect(ethernet_rederect as u32, 0);
-                        }
-                        Ok(xdp_action::XDP_REDIRECT)
-                    } else {
-                        Ok(xdp_action::XDP_PASS)
-                    }
-                } else {
-                    let _ = PACKET_COUNTS_V4.insert(&flow_key_direction, &bucket, 0);
-                    Err(FirewallError::RateLimited)
-                }
-            } else {
-                let target_ifindex = config.output_ethernet_adapter;
-                if let Some(ethernet_rederect) = target_ifindex {
-                    unsafe {
-                        aya_ebpf::helpers::bpf_redirect(ethernet_rederect as u32, 0);
-                    }
-                    Ok(xdp_action::XDP_REDIRECT)
-                } else {
-                    Ok(xdp_action::XDP_PASS)
-                }
-            }
+            ddos_and_bucket_ending_v4(
+                config,
+                bucket,
+                now,
+                active_profile,
+                flow_key_direction,
+                direction,
+            )
         }
         Ok(EtherType::Ipv6) => {
             let ipv6hdr: *const Ipv6Hdr =
@@ -502,7 +483,7 @@ fn xdp_firewall(ctx: XdpContext) -> Result<u32, FirewallError> {
             };
 
             // Fetch or initialize token bucket state for IPv4
-            let mut bucket = unsafe {
+            let bucket = unsafe {
                 PACKET_COUNTS_V6
                     .get(&flow_key_direction)
                     .copied()
@@ -512,43 +493,14 @@ fn xdp_firewall(ctx: XdpContext) -> Result<u32, FirewallError> {
                     })
             };
 
-            if config.ddos_activated {
-                if evaluate_bucket(&mut bucket, active_profile, now).is_ok() {
-                    let _ = PACKET_COUNTS_V6.insert(&flow_key_direction, &bucket, 0);
-                    let target_ifindex = {
-                        match direction {
-                            TraficDirection::Incoming => config.output_ethernet_adapter,
-                            TraficDirection::Outgoing => config.incoming_ethernet_adapter,
-                        }
-                    };
-                    if let Some(ethernet_rederect) = target_ifindex {
-                        unsafe {
-                            aya_ebpf::helpers::bpf_redirect(ethernet_rederect as u32, 0);
-                        }
-                        Ok(xdp_action::XDP_REDIRECT)
-                    } else {
-                        Ok(xdp_action::XDP_PASS)
-                    }
-                } else {
-                    let _ = PACKET_COUNTS_V6.insert(&flow_key_direction, &bucket, 0);
-                    Err(FirewallError::RateLimited)
-                }
-            } else {
-                let target_ifindex = {
-                    match direction {
-                        TraficDirection::Incoming => config.output_ethernet_adapter,
-                        TraficDirection::Outgoing => config.incoming_ethernet_adapter,
-                    }
-                };
-                if let Some(ethernet_rederect) = target_ifindex {
-                    unsafe {
-                        aya_ebpf::helpers::bpf_redirect(ethernet_rederect as u32, 0);
-                    }
-                    Ok(xdp_action::XDP_REDIRECT)
-                } else {
-                    Ok(xdp_action::XDP_PASS)
-                }
-            }
+            ddos_and_bucket_ending_v6(
+                config,
+                bucket,
+                now,
+                active_profile,
+                flow_key_direction,
+                direction,
+            )
         }
         // check if other typ is allowed and get through
         Ok(x) if config.protcol_allowed.contains(x.into()) => Ok(xdp_action::XDP_PASS),
@@ -578,6 +530,92 @@ fn evaluate_bucket(
         Ok(xdp_action::XDP_PASS)
     } else {
         Err(FirewallError::RateLimited)
+    }
+}
+#[inline(always)]
+fn ddos_and_bucket_ending_v4(
+    config: &FirewallConfig,
+    mut bucket: TokenBucketState,
+    now: u64,
+    active_profile: &RateProfile,
+    flow_key_direction: Ipv4Packet,
+    direction: TraficDirection,
+) -> Result<u32, FirewallError> {
+    if config.ddos_activated {
+        if evaluate_bucket(&mut bucket, active_profile, now).is_ok() {
+            let _ = PACKET_COUNTS_V4.insert(&flow_key_direction, &bucket, 0);
+            let target_ifindex: Option<u32> = match direction {
+                TraficDirection::Incoming => config.output_ethernet_adapter.map(|x| x as u32),
+                TraficDirection::Outgoing => config.incoming_ethernet_adapter.map(|x| x as u32),
+            };
+            if let Some(ethernet_rederect) = target_ifindex {
+                unsafe {
+                    aya_ebpf::helpers::bpf_redirect(ethernet_rederect as u32, 0);
+                }
+                Ok(xdp_action::XDP_REDIRECT)
+            } else {
+                Ok(xdp_action::XDP_PASS)
+            }
+        } else {
+            let _ = PACKET_COUNTS_V4.insert(&flow_key_direction, &bucket, 0);
+            Err(FirewallError::RateLimited)
+        }
+    } else {
+        let target_ifindex: Option<u32> = match direction {
+            TraficDirection::Incoming => config.output_ethernet_adapter.map(|x| x as u32),
+            TraficDirection::Outgoing => config.incoming_ethernet_adapter.map(|x| x as u32),
+        };
+        if let Some(ethernet_rederect) = target_ifindex {
+            unsafe {
+                aya_ebpf::helpers::bpf_redirect(ethernet_rederect as u32, 0);
+            }
+            Ok(xdp_action::XDP_REDIRECT)
+        } else {
+            Ok(xdp_action::XDP_PASS)
+        }
+    }
+}
+#[inline(always)]
+fn ddos_and_bucket_ending_v6(
+    config: &FirewallConfig,
+    mut bucket: TokenBucketState,
+    now: u64,
+    active_profile: &RateProfile,
+    flow_key_direction: Ipv6Packet,
+    direction: TraficDirection,
+) -> Result<u32, FirewallError> {
+    if config.ddos_activated {
+        if evaluate_bucket(&mut bucket, active_profile, now).is_ok() {
+            let _ = PACKET_COUNTS_V6.insert(&flow_key_direction, &bucket, 0);
+            let target_ifindex: Option<u32> = match direction {
+                TraficDirection::Incoming => config.output_ethernet_adapter.map(|x| x as u32),
+                TraficDirection::Outgoing => config.incoming_ethernet_adapter.map(|x| x as u32),
+            };
+            if let Some(ethernet_rederect) = target_ifindex {
+                unsafe {
+                    aya_ebpf::helpers::bpf_redirect(ethernet_rederect as u32, 0);
+                }
+                Ok(xdp_action::XDP_REDIRECT)
+            } else {
+                Ok(xdp_action::XDP_PASS)
+            }
+        } else {
+            let _ = PACKET_COUNTS_V6.insert(&flow_key_direction, &bucket, 0);
+            Err(FirewallError::RateLimited)
+        }
+    } else {
+        let target_ifindex: Option<u32> = match direction {
+            TraficDirection::Incoming => config.output_ethernet_adapter.map(|x| x as u32),
+            TraficDirection::Outgoing => config.incoming_ethernet_adapter.map(|x| x as u32),
+        };
+        if let Some(ethernet_rederect) = target_ifindex {
+            unsafe {
+                aya_ebpf::helpers::bpf_redirect(ethernet_rederect as u32, 0);
+            }
+            Ok(xdp_action::XDP_REDIRECT)
+        } else {
+            Ok(xdp_action::XDP_PASS)
+        }
     }
 }
 
