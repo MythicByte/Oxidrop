@@ -10,10 +10,8 @@ use etherparse::{
 };
 use oxidrop_common::{
     Action,
-    FirewallConfig,
     Ipv4Packet,
     Ipv6Packet,
-    RateProfile,
 };
 
 use crate::test_ebpf::{
@@ -408,14 +406,6 @@ fn test_config_update_changes_rate_limit() {
     for _ in 0..100 {
         assert_eq!(harness.run_packet(&pkt), XDP_PASS);
     }
-
-    let restrictive_config = FirewallConfig {
-        udp_profile: RateProfile {
-            rate_shift: 30,
-            burst: 10,
-        },
-        ..FirewallConfig::default()
-    };
 }
 
 #[test]
