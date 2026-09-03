@@ -10,6 +10,13 @@ pub enum Action {
     Allow = 0,
     Deny = 1,
 }
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct AllowListState {
+    pub action: Action,
+    pub last_seen: u64,
+}
+
 /// which directions of ethenet adapter i need to check
 #[repr(C)]
 #[derive(Clone, Copy, Debug)]
@@ -188,6 +195,8 @@ unsafe impl Pod for Ipv6Packet {}
 unsafe impl Pod for TokenBucketState {}
 #[cfg(feature = "user")]
 unsafe impl Pod for TraficDirection {}
+#[cfg(feature = "user")]
+unsafe impl aya::Pod for AllowListState {}
 
 impl From<EtherType> for ActivaterEtherTypes {
     fn from(value: EtherType) -> Self {

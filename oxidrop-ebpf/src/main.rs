@@ -35,6 +35,7 @@ use num_traits::FromPrimitive;
 use oxidrop_common::{
     Action,
     ActivaterEtherTypes,
+    AllowListState,
     FirewallConfig,
     FirewallError,
     Ipv4Packet,
@@ -82,10 +83,12 @@ static CONFIG: Array<FirewallConfig> = Array::with_max_entries(1, 0);
 /// Allow List, on this block bool is ignored
 /// first ip and port, and then the packet counter
 #[map]
-static ALLOW_LIST_V4: LruHashMap<Ipv4Packet, Action> = LruHashMap::with_max_entries(4096, 0);
+static ALLOW_LIST_V4: LruHashMap<Ipv4Packet, AllowListState> =
+    LruHashMap::with_max_entries(4096, 0);
 
 #[map]
-static ALLOW_LIST_V6: LruHashMap<Ipv6Packet, Action> = LruHashMap::with_max_entries(4096, 0);
+static ALLOW_LIST_V6: LruHashMap<Ipv6Packet, AllowListState> =
+    LruHashMap::with_max_entries(4096, 0);
 /// Track Ip Packets
 /// first ip and port, and then the packet counter
 #[map]
@@ -217,13 +220,24 @@ fn xdp_firewall(ctx: XdpContext) -> Result<u32, FirewallError> {
                 match direction {
                     TraficDirection::Incoming => {
                         match unsafe { ALLOW_LIST_V4.get(&flow_key_direction) } {
-                            Some(Action::Allow) => (),
+                            Some(AllowListState {
+                                action: Action::Allow,
+                                last_seen: _,
+                            }) => (),
                             _ => return Err(FirewallError::DeniedByPolicy),
                         }
                     }
                     TraficDirection::Outgoing => {
                         if unsafe { ALLOW_LIST_V4.get(&flow_key_direction).is_none() } {
-                            let _ = ALLOW_LIST_V4.insert(&flow_key_direction, &Action::Allow, 0);
+                            let now = unsafe { aya_ebpf::helpers::bpf_ktime_get_ns() };
+                            let _ = ALLOW_LIST_V4.insert(
+                                &flow_key_direction,
+                                AllowListState {
+                                    action: Action::Allow,
+                                    last_seen: now,
+                                },
+                                0,
+                            );
                         }
                     }
                 }
@@ -448,20 +462,36 @@ fn xdp_firewall(ctx: XdpContext) -> Result<u32, FirewallError> {
                 match direction {
                     TraficDirection::Incoming => {
                         match unsafe { ALLOW_LIST_V6.get(&flow_key_direction) } {
-                            Some(Action::Allow) => (),
+                            Some(AllowListState {
+                                action: Action::Allow,
+                                last_seen: _,
+                            }) => (),
                             _ => return Err(FirewallError::DeniedByPolicy),
                         }
                     }
                     TraficDirection::Outgoing => {
                         if unsafe { ALLOW_LIST_V6.get(&flow_key_direction).is_none() } {
-                            let _ = ALLOW_LIST_V6.insert(&flow_key_direction, &Action::Allow, 0);
+                            let now = unsafe { aya_ebpf::helpers::bpf_ktime_get_ns() };
+                            let _ = ALLOW_LIST_V6.insert(
+                                &flow_key_direction,
+                                AllowListState {
+                                    action: Action::Allow,
+                                    last_seen: now,
+                                },
+                                0,
+                            );
                         }
                     }
                 }
             } else {
                 let _ = ALLOW_LIST_V6.remove(&flow_key_direction);
                 let _ = PACKET_COUNTS_V6.remove(&flow_key_direction);
-                let target_ifindex = config.output_ethernet_adapter;
+                let target_ifindex = {
+                    match direction {
+                        TraficDirection::Incoming => config.output_ethernet_adapter,
+                        TraficDirection::Outgoing => config.incoming_ethernet_adapter,
+                    }
+                };
                 if let Some(ethernet_rederect) = target_ifindex {
                     unsafe {
                         aya_ebpf::helpers::bpf_redirect(ethernet_rederect as u32, 0);
