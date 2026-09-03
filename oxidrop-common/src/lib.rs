@@ -5,21 +5,21 @@ use aya::Pod;
 use network_types::eth::EtherType;
 /// What to do with a list
 #[repr(C)]
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 pub enum Action {
     Allow = 0,
     Deny = 1,
 }
 /// The ddos protection bucket
 #[repr(C)]
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 pub struct TokenBucketState {
     pub tokens: u64,
     pub last_update: u64,
 }
 /// Erros for the firewall
 #[repr(C)]
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 pub enum FirewallError {
     /// The packet is too short, and reading the header would go out of bounds.
     OutOfBounds = 0,
@@ -45,14 +45,14 @@ bitflags::bitflags! {
 }
 /// Bucket State for Rate Limiting
 #[repr(C)]
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 pub struct RateProfile {
     pub rate_shift: u64,
     pub burst: u64,
 }
 // Configuration provided by Userspace
 #[repr(C)]
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 pub struct FirewallConfig {
     pub tcp_profile: RateProfile,
     pub udp_profile: RateProfile,
@@ -66,7 +66,7 @@ pub struct FirewallConfig {
 /// Tightly packed 5-Tuple for IPv4 state tracking
 /// Total size: 16 bytes (Strictly aligned)
 #[repr(C)]
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 pub struct Ipv4Packet {
     pub source_addr: u32,      // 4 bytes (Source IP)
     pub destination_addr: u32, // 4 bytes (Destination IP)
@@ -101,7 +101,7 @@ impl Ipv4Packet {
 /// Tightly packed 5-Tuple for IPv6 state tracking
 /// Total size: 40 bytes (Strictly aligned)
 #[repr(C)]
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 pub struct Ipv6Packet {
     pub source_addr: [u32; 4],      // 16 bytes
     pub destination_addr: [u32; 4], // 16 bytes

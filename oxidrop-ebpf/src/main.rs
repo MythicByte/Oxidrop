@@ -152,7 +152,7 @@ fn xdp_firewall(ctx: XdpContext) -> Result<u32, FirewallError> {
             let protocol = unsafe { *ipv4hdr }
                 .proto()
                 .map_err(|_| FirewallError::OutOfBounds)?;
-            let ip_header_len_ipv4_ihl = unsafe { (*ipv4hdr).ihl() } as usize * 4;
+            let ip_header_len_ipv4_ihl = unsafe { (*ipv4hdr).ihl() } as usize;
             let (source_port, dest_port) = {
                 match protocol {
                     IpProto::Tcp => {
@@ -175,16 +175,16 @@ fn xdp_firewall(ctx: XdpContext) -> Result<u32, FirewallError> {
             };
 
             let flow_key = Ipv4Packet::new(
-                u32::from_be(source_addr.into()),
-                u32::from_be(dest_addr.into()),
+                u32::from_ne_bytes(source_addr.octets()),
+                u32::from_ne_bytes(dest_addr.octets()),
                 source_port,
                 dest_port,
                 protocol.into(), // Safely converts to u8
             );
             // for reverse lookup
             let reverse_flow_key = Ipv4Packet::new(
-                u32::from_be(dest_addr.into()),
-                u32::from_be(source_addr.into()),
+                u32::from_ne_bytes(dest_addr.octets()),
+                u32::from_ne_bytes(source_addr.octets()),
                 dest_port,
                 source_port,
                 protocol.into(), // Safely converts to u8
@@ -238,16 +238,54 @@ fn xdp_firewall(ctx: XdpContext) -> Result<u32, FirewallError> {
             let ipv6hdr: *const Ipv6Hdr =
                 unsafe { ptr_at(&ctx, EthHdr::LEN).map_err(|_| FirewallError::OutOfBounds)? };
 
-            let segs_src = unsafe { (*ipv6hdr).src_addr().segments() };
-            let segs_dst = unsafe { (*ipv6hdr).dst_addr().segments() };
+            let src_octets = unsafe { (*ipv6hdr).src_addr().octets() };
+            let dst_octets = unsafe { (*ipv6hdr).dst_addr().octets() };
 
-            let mut src_array = [0u32; 4];
-            let mut dst_array = [0u32; 4];
-            for i in 0..4 {
-                src_array[i] = ((segs_src[i * 2] as u32) << 16) | (segs_src[i * 2 + 1] as u32);
-                dst_array[i] = ((segs_dst[i * 2] as u32) << 16) | (segs_dst[i * 2 + 1] as u32);
-            }
+            let src_array = [
+                u32::from_be_bytes(
+                    src_octets[0..4]
+                        .try_into()
+                        .map_err(|_| FirewallError::OutOfBounds)?,
+                ),
+                u32::from_be_bytes(
+                    src_octets[4..8]
+                        .try_into()
+                        .map_err(|_| FirewallError::OutOfBounds)?,
+                ),
+                u32::from_be_bytes(
+                    src_octets[8..12]
+                        .try_into()
+                        .map_err(|_| FirewallError::OutOfBounds)?,
+                ),
+                u32::from_be_bytes(
+                    src_octets[12..16]
+                        .try_into()
+                        .map_err(|_| FirewallError::OutOfBounds)?,
+                ),
+            ];
 
+            let dst_array = [
+                u32::from_be_bytes(
+                    dst_octets[0..4]
+                        .try_into()
+                        .map_err(|_| FirewallError::OutOfBounds)?,
+                ),
+                u32::from_be_bytes(
+                    dst_octets[4..8]
+                        .try_into()
+                        .map_err(|_| FirewallError::OutOfBounds)?,
+                ),
+                u32::from_be_bytes(
+                    dst_octets[8..12]
+                        .try_into()
+                        .map_err(|_| FirewallError::OutOfBounds)?,
+                ),
+                u32::from_be_bytes(
+                    dst_octets[12..16]
+                        .try_into()
+                        .map_err(|_| FirewallError::OutOfBounds)?,
+                ),
+            ];
             let protocol_first =
                 unsafe { (*ipv6hdr).next_hdr() }.map_err(|_| FirewallError::OutOfBounds)?;
 
@@ -333,7 +371,7 @@ fn xdp_firewall(ctx: XdpContext) -> Result<u32, FirewallError> {
                 source_port,
                 next_proto.into(),
             );
-            let subnet_key_v6 = Key::new(128, ipv6_be_words(segs_src));
+            let subnet_key_v6 = Key::new(128, src_array);
             match SUBNET_MATCHING_V6.get(&subnet_key_v6) {
                 Some(Action::Allow) => (),
                 _ => return Err(FirewallError::DeniedByPolicy),
@@ -415,15 +453,6 @@ fn evaluate_bucket(
     } else {
         Err(FirewallError::RateLimited)
     }
-}
-#[inline(always)]
-fn ipv6_be_words(segments: [u16; 8]) -> [u32; 4] {
-    let mut words = [0u32; 4];
-    for i in 0..4 {
-        let combined = ((segments[i * 2] as u32) << 16) | (segments[i * 2 + 1] as u32);
-        words[i] = u32::from_be(combined);
-    }
-    words
 }
 
 #[cfg(not(test))]
