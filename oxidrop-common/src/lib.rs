@@ -171,6 +171,8 @@ unsafe impl Pod for FirewallConfig {}
 unsafe impl Pod for Ipv4Packet {}
 #[cfg(feature = "user")]
 unsafe impl Pod for Ipv6Packet {}
+#[cfg(feature = "user")]
+unsafe impl Pod for TokenBucketState {}
 
 impl From<EtherType> for ActivaterEtherTypes {
     fn from(value: EtherType) -> Self {
