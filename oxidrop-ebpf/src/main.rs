@@ -13,7 +13,6 @@ use aya_ebpf::{
         Array,
         LpmTrie,
         LruHashMap,
-        RingBuf,
         lpm_trie::Key,
     },
     programs::XdpContext,
