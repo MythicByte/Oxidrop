@@ -5,13 +5,17 @@ use axum::{
     Router,
     extract::State,
     response::IntoResponse,
-    routing::get,
+    routing::{
+        get,
+        post,
+    },
 };
 use aya::maps::{
     Array,
     HashMap,
     LpmTrie,
     MapData,
+    lpm_trie::Key,
 };
 use hyper::StatusCode;
 use oxidrop_common::{
@@ -50,6 +54,30 @@ pub struct AllowListV4Update {
 pub struct AllowListV6Update {
     pub key: Ipv6Packet,
     pub state: AllowListState,
+}
+#[derive(Debug, Serialize, Deserialize)]
+pub struct PacketCountV4Update {
+    pub key: Ipv4Packet,
+    pub state: TokenBucketState,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct PacketCountV6Update {
+    pub key: Ipv6Packet,
+    pub state: TokenBucketState,
+}
+#[derive(Debug, Serialize, Deserialize)]
+pub struct SubnetMatchV4Update {
+    pub network: u32,
+    pub prefix_len: u32,
+    pub action: Action,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct SubnetMatchV6Update {
+    pub network: [u32; 4],
+    pub prefix_len: u32,
+    pub action: Action,
 }
 
 // But we need a "patch-style" request type that allows partial updates
@@ -224,7 +252,7 @@ pub async fn modify_allow_list_v6(
     if map.insert(&payload.key, &payload.state, 0).is_err() {
         return (
             StatusCode::INTERNAL_SERVER_ERROR,
-            "Failed to insert into ALLOW_LIST_V4 map",
+            "Failed to insert into ALLOW_LIST_V6 map",
         )
             .into_response();
     }
@@ -253,7 +281,211 @@ pub async fn clear_allow_list_v6(
     StatusCode::OK.into_response()
 }
 
+pub async fn get_packet_counts_v4(
+    State(state): State<Arc<RwLock<FirewallState>>>,
+) -> impl IntoResponse {
+    let state_guard = state.read().await;
+    let map = state_guard.packet_counts_v4.read().await;
+
+    let mut entries = Vec::with_capacity(4096);
+    for item in map.iter() {
+        if let Ok((key, value)) = item {
+            entries.push((key, value));
+        }
+    }
+    Json(entries).into_response()
+}
+
+pub async fn modify_packet_counts_v4(
+    State(state): State<Arc<RwLock<FirewallState>>>,
+    Json(payload): Json<PacketCountV4Update>,
+) -> impl IntoResponse {
+    let state_guard = state.read().await;
+    let mut map = state_guard.packet_counts_v4.write().await;
+
+    if map.insert(&payload.key, &payload.state, 0).is_err() {
+        return (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "Failed to insert into PACKET_COUNTS_V4 map",
+        )
+            .into_response();
+    }
+    StatusCode::OK.into_response()
+}
+
+pub async fn clear_packet_counts_v4(
+    State(state): State<Arc<RwLock<FirewallState>>>,
+) -> impl IntoResponse {
+    let state_guard = state.read().await;
+    let mut map = state_guard.packet_counts_v4.write().await;
+
+    let mut keys_to_remove = Vec::with_capacity(4096);
+    for item in map.iter() {
+        if let Ok((key, _)) = item {
+            keys_to_remove.push(key);
+        }
+    }
+    for key in keys_to_remove {
+        let _ = map.remove(&key);
+    }
+    StatusCode::OK.into_response()
+}
+pub async fn get_packet_counts_v6(
+    State(state): State<Arc<RwLock<FirewallState>>>,
+) -> impl IntoResponse {
+    let state_guard = state.read().await;
+    let map = state_guard.packet_counts_v6.read().await;
+
+    let mut entries = Vec::with_capacity(4096);
+    for item in map.iter() {
+        if let Ok((key, value)) = item {
+            entries.push((key, value));
+        }
+    }
+    Json(entries).into_response()
+}
+
+pub async fn modify_packet_counts_v6(
+    State(state): State<Arc<RwLock<FirewallState>>>,
+    Json(payload): Json<PacketCountV6Update>,
+) -> impl IntoResponse {
+    let state_guard = state.read().await;
+    let mut map = state_guard.packet_counts_v6.write().await;
+
+    if map.insert(&payload.key, &payload.state, 0).is_err() {
+        return (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "Failed to insert into PACKET_COUNTS_V6 map",
+        )
+            .into_response();
+    }
+    StatusCode::OK.into_response()
+}
+
+pub async fn clear_packet_counts_v6(
+    State(state): State<Arc<RwLock<FirewallState>>>,
+) -> impl IntoResponse {
+    let state_guard = state.read().await;
+    let mut map = state_guard.packet_counts_v6.write().await;
+
+    let mut keys_to_remove = Vec::with_capacity(4096);
+    for item in map.iter() {
+        if let Ok((key, _)) = item {
+            keys_to_remove.push(key);
+        }
+    }
+    for key in keys_to_remove {
+        let _ = map.remove(&key);
+    }
+    StatusCode::OK.into_response()
+}
+pub async fn modify_subnet_matching_v4(
+    State(state): State<Arc<RwLock<FirewallState>>>,
+    Json(payload): Json<SubnetMatchV4Update>,
+) -> impl IntoResponse {
+    let state_guard = state.read().await;
+    let mut map = state_guard.subnet_matching_v4.write().await;
+
+    let key = Key::new(payload.prefix_len, payload.network);
+    if map.insert(&key, payload.action, 0).is_err() {
+        return (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "Failed to insert into SUBNET_MATCHING_V4",
+        )
+            .into_response();
+    }
+    StatusCode::OK.into_response()
+}
+
+pub async fn remove_subnet_matching_v4(
+    State(state): State<Arc<RwLock<FirewallState>>>,
+    Json(payload): Json<SubnetMatchV4Update>,
+) -> impl IntoResponse {
+    let state_guard = state.read().await;
+    let mut map = state_guard.subnet_matching_v4.write().await;
+
+    let key = Key::new(payload.prefix_len, payload.network);
+    if map.remove(&key).is_err() {
+        return (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "Failed to remove from SUBNET_MATCHING_V4",
+        )
+            .into_response();
+    }
+    StatusCode::OK.into_response()
+}
+
+pub async fn modify_subnet_matching_v6(
+    State(state): State<Arc<RwLock<FirewallState>>>,
+    Json(payload): Json<SubnetMatchV6Update>,
+) -> impl IntoResponse {
+    let state_guard = state.read().await;
+    let mut map = state_guard.subnet_matching_v6.write().await;
+
+    let key = Key::new(payload.prefix_len, payload.network);
+    if map.insert(&key, payload.action, 0).is_err() {
+        return (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "Failed to insert into SUBNET_MATCHING_V6",
+        )
+            .into_response();
+    }
+    StatusCode::OK.into_response()
+}
+
+pub async fn remove_subnet_matching_v6(
+    State(state): State<Arc<RwLock<FirewallState>>>,
+    Json(payload): Json<SubnetMatchV6Update>,
+) -> impl IntoResponse {
+    let state_guard = state.read().await;
+    let mut map = state_guard.subnet_matching_v6.write().await;
+
+    let key = Key::new(payload.prefix_len, payload.network);
+    if map.remove(&key).is_err() {
+        return (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "Failed to remove from SUBNET_MATCHING_V6",
+        )
+            .into_response();
+    }
+    StatusCode::OK.into_response()
+}
 /// Router for config
 pub fn config_router() -> Router<Arc<RwLock<FirewallState>>> {
-    Router::new().route("/config", get(get_config).post(update_config))
+    Router::new()
+        .route("/config", get(get_config).post(update_config))
+        .route(
+            "/allow_list/v4",
+            get(get_allow_list_v4)
+                .post(modify_allow_list_v4)
+                .delete(clear_allow_list_v4),
+        )
+        .route(
+            "/allow_list/v6",
+            get(get_allow_list_v6)
+                .post(modify_allow_list_v6)
+                .delete(clear_allow_list_v6),
+        )
+        // Packet Counts
+        .route(
+            "/packet_counts/v4",
+            get(get_packet_counts_v4)
+                .post(modify_packet_counts_v4)
+                .delete(clear_packet_counts_v4),
+        )
+        .route(
+            "/packet_counts/v6",
+            get(get_packet_counts_v6)
+                .post(modify_packet_counts_v6)
+                .delete(clear_packet_counts_v6),
+        )
+        // Subnets (Notice: No GET or bulk DELETE)
+        .route(
+            "/subnet/v4",
+            post(modify_subnet_matching_v4).delete(remove_subnet_matching_v4),
+        )
+        .route(
+            "/subnet/v6",
+            post(modify_subnet_matching_v6).delete(remove_subnet_matching_v6),
+        )
 }
