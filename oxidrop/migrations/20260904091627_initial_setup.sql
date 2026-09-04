@@ -5,6 +5,9 @@ CREATE TABLE users (
     
     -- Roles
     role TEXT NOT NULL DEFAULT 'viewer' CHECK(role IN ('admin', 'viewer')),
+
+    -- Password must be changed (0 = no, 1 = yes)
+    password_must_be_changed INTEGER NOT NULL DEFAULT 1 CHECK(password_must_be_changed IN (0, 1)),
     
     -- Status: Restricted to 0 or 1 to emulate a strict boolean
     is_active INTEGER NOT NULL DEFAULT 1 CHECK(is_active IN (0, 1)),
