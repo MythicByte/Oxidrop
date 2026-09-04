@@ -41,6 +41,16 @@ pub struct FirewallState {
     pub subnet_matching_v4: Arc<RwLock<LpmTrie<MapData, u32, Action>>>,
     pub subnet_matching_v6: Arc<RwLock<LpmTrie<MapData, [u32; 4], Action>>>,
 }
+#[derive(Debug, Serialize, Deserialize)]
+pub struct AllowListV4Update {
+    pub key: Ipv4Packet,
+    pub state: AllowListState,
+}
+#[derive(Debug, Serialize, Deserialize)]
+pub struct AllowListV6Update {
+    pub key: Ipv6Packet,
+    pub state: AllowListState,
+}
 
 // But we need a "patch-style" request type that allows partial updates
 #[derive(Debug, Serialize, Deserialize)]
@@ -129,6 +139,120 @@ pub async fn update_config(
 
     Json(cfg).into_response()
 }
+/// GET: Fetch all items in the IPv4 Allow List
+pub async fn get_allow_list_v4(
+    State(state): State<Arc<RwLock<FirewallState>>>,
+) -> impl IntoResponse {
+    let state_guard = state.read().await;
+    let map = state_guard.allow_list_v4.read().await;
+
+    let mut entries = Vec::with_capacity(4096);
+    for item in map.iter() {
+        if let Ok((key, value)) = item {
+            entries.push((key, value));
+        }
+    }
+
+    Json(entries).into_response()
+}
+
+/// POST/PUT: Insert or update an item
+pub async fn modify_allow_list_v4(
+    State(state): State<Arc<RwLock<FirewallState>>>,
+    Json(payload): Json<AllowListV4Update>,
+) -> impl IntoResponse {
+    let state_guard = state.read().await;
+    let mut map = state_guard.allow_list_v4.write().await;
+
+    if map.insert(&payload.key, &payload.state, 0).is_err() {
+        return (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "Failed to insert into ALLOW_LIST_V4 map",
+        )
+            .into_response();
+    }
+
+    StatusCode::OK.into_response()
+}
+
+/// DELETE: Clear all entries in the list
+pub async fn clear_allow_list_v4(
+    State(state): State<Arc<RwLock<FirewallState>>>,
+) -> impl IntoResponse {
+    let state_guard = state.read().await;
+    let mut map = state_guard.allow_list_v4.write().await;
+
+    let mut keys_to_remove = Vec::with_capacity(4096);
+    for item in map.iter() {
+        if let Ok((key, _)) = item {
+            keys_to_remove.push(key);
+        }
+    }
+
+    for key in keys_to_remove {
+        let _ = map.remove(&key);
+    }
+
+    StatusCode::OK.into_response()
+}
+
+/// GET: Fetch all items in the IPv4 Allow List
+pub async fn get_allow_list_v6(
+    State(state): State<Arc<RwLock<FirewallState>>>,
+) -> impl IntoResponse {
+    let state_guard = state.read().await;
+    let map = state_guard.allow_list_v6.read().await;
+
+    let mut entries = Vec::with_capacity(4096);
+    for item in map.iter() {
+        if let Ok((key, value)) = item {
+            entries.push((key, value));
+        }
+    }
+
+    Json(entries).into_response()
+}
+
+/// POST/PUT: Insert or update an item
+pub async fn modify_allow_list_v6(
+    State(state): State<Arc<RwLock<FirewallState>>>,
+    Json(payload): Json<AllowListV6Update>,
+) -> impl IntoResponse {
+    let state_guard = state.read().await;
+    let mut map = state_guard.allow_list_v6.write().await;
+
+    if map.insert(&payload.key, &payload.state, 0).is_err() {
+        return (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "Failed to insert into ALLOW_LIST_V4 map",
+        )
+            .into_response();
+    }
+
+    StatusCode::OK.into_response()
+}
+
+/// DELETE: Clear all entries in the list
+pub async fn clear_allow_list_v6(
+    State(state): State<Arc<RwLock<FirewallState>>>,
+) -> impl IntoResponse {
+    let state_guard = state.read().await;
+    let mut map = state_guard.allow_list_v6.write().await;
+
+    let mut keys_to_remove = Vec::with_capacity(4096);
+    for item in map.iter() {
+        if let Ok((key, _)) = item {
+            keys_to_remove.push(key);
+        }
+    }
+
+    for key in keys_to_remove {
+        let _ = map.remove(&key);
+    }
+
+    StatusCode::OK.into_response()
+}
+
 /// Router for config
 pub fn config_router() -> Router<Arc<RwLock<FirewallState>>> {
     Router::new().route("/config", get(get_config).post(update_config))
