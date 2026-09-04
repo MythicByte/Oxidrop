@@ -1,16 +1,31 @@
+pub mod api;
 pub mod auth;
 pub mod router;
+pub mod state;
+use std::sync::Arc;
+
 use anyhow::Context as _;
-use aya::programs::{
-    Xdp,
-    XdpMode,
+use aya::{
+    maps::{
+        Array,
+        HashMap,
+        LpmTrie,
+    },
+    programs::{
+        Xdp,
+        XdpMode,
+    },
 };
 use clap::Parser;
-use oxidrop_common::AllowListState;
+use oxidrop_common::{
+    AllowListState,
+    TokenBucketState,
+};
 use rustix::time::{
     ClockId,
     clock_gettime,
 };
+use tokio::sync::RwLock;
 use tower_sessions::{
     Expiry,
     MemoryStore,
@@ -25,7 +40,10 @@ use tracing::{
 };
 use tracing_subscriber::FmtSubscriber;
 
-use crate::router::combined_router;
+use crate::{
+    router::combined_router,
+    state::FirewallState,
+};
 
 #[derive(Debug, Parser)]
 #[command(arg_required_else_help = true)]
@@ -87,59 +105,111 @@ async fn main() -> anyhow::Result<()> {
         .context("failed to attach the XDP program with default mode - try changing XdpMode::default() to XdpMode::Skb")?;
     info!("XDP program attached to {}", &iface);
 
-    let mut allow_list_v4: aya::maps::HashMap<
+    let config_map: aya::maps::Array<aya::maps::MapData, oxidrop_common::FirewallConfig> =
+        Array::try_from(ebpf.take_map("CONFIG").context("CONFIG map not found")?)?;
+
+    let allow_list_v4: aya::maps::HashMap<
         aya::maps::MapData,
         oxidrop_common::Ipv4Packet,
         AllowListState,
-    > = aya::maps::HashMap::try_from(
+    > = HashMap::try_from(
         ebpf.take_map("ALLOW_LIST_V4")
             .context("ALLOW_LIST_V4 map not found")?,
     )?;
-    let mut allow_list_v6: aya::maps::HashMap<
+
+    let allow_list_v6: aya::maps::HashMap<
         aya::maps::MapData,
         oxidrop_common::Ipv6Packet,
         AllowListState,
-    > = aya::maps::HashMap::try_from(
+    > = HashMap::try_from(
         ebpf.take_map("ALLOW_LIST_V6")
             .context("ALLOW_LIST_V6 map not found")?,
     )?;
+
+    let packet_counts_v4: aya::maps::HashMap<
+        aya::maps::MapData,
+        oxidrop_common::Ipv4Packet,
+        TokenBucketState,
+    > = HashMap::try_from(
+        ebpf.take_map("PACKET_COUNTS_V4")
+            .context("PACKET_COUNTS_V4 map not found")?,
+    )?;
+
+    let packet_counts_v6: aya::maps::HashMap<
+        aya::maps::MapData,
+        oxidrop_common::Ipv6Packet,
+        TokenBucketState,
+    > = HashMap::try_from(
+        ebpf.take_map("PACKET_COUNTS_V6")
+            .context("PACKET_COUNTS_V6 map not found")?,
+    )?;
+
+    let subnet_matching_v4: aya::maps::LpmTrie<aya::maps::MapData, u32, oxidrop_common::Action> =
+        LpmTrie::try_from(
+            ebpf.take_map("SUBNET_MATCHING_V4")
+                .context("SUBNET_MATCHING_V4 map not found")?,
+        )?;
+
+    let subnet_matching_v6: aya::maps::LpmTrie<
+        aya::maps::MapData,
+        [u32; 4],
+        oxidrop_common::Action,
+    > = LpmTrie::try_from(
+        ebpf.take_map("SUBNET_MATCHING_V6")
+            .context("SUBNET_MATCHING_V6 map not found")?,
+    )?;
+    let state = FirewallState {
+        config: Arc::new(RwLock::new(config_map)),
+        allow_list_v4: Arc::new(RwLock::new(allow_list_v4)),
+        allow_list_v6: Arc::new(RwLock::new(allow_list_v6)),
+        packet_counts_v4: Arc::new(RwLock::new(packet_counts_v4)),
+        packet_counts_v6: Arc::new(RwLock::new(packet_counts_v6)),
+        subnet_matching_v4: Arc::new(RwLock::new(subnet_matching_v4)),
+        subnet_matching_v6: Arc::new(RwLock::new(subnet_matching_v6)),
+    };
+    let state_clone = state.clone();
     // Spawn the background cleanup task
     tokio::spawn(async move {
         const TIMEOUT_NS: u64 = 10 * 60 * 1_000_000_000; // 10 minutes
-        let mut interval = tokio::time::interval(tokio::time::Duration::from_mins(10));
+        let mut interval = tokio::time::interval(tokio::time::Duration::from_secs(600));
 
         loop {
             interval.tick().await;
             let current_bpf_time = get_bpf_ktime_ns();
-            let mut keys_to_remove = Vec::new();
 
-            //  Clean up IPv4 map
-            for entry in allow_list_v4.iter() {
-                if let Ok((key, state)) = entry {
-                    if current_bpf_time.saturating_sub(state.last_seen) > TIMEOUT_NS {
-                        keys_to_remove.push(key);
+            // Clean up IPv4 allow list
+            {
+                let mut v4_map = state_clone.allow_list_v4.write().await;
+                let mut keys_to_remove = Vec::new();
+                for entry in v4_map.iter() {
+                    if let Ok((key, state_val)) = entry {
+                        if current_bpf_time.saturating_sub(state_val.last_seen) > TIMEOUT_NS {
+                            keys_to_remove.push(key);
+                        }
                     }
+                }
+                for key in keys_to_remove {
+                    let _ = v4_map.remove(&key);
                 }
             }
 
-            for key in keys_to_remove {
-                let _ = allow_list_v4.remove(&key);
-            }
-            //  Clean up IPv6 map
-            let mut v6_keys_to_remove = Vec::new();
-            for entry in allow_list_v6.iter() {
-                if let Ok((key, state)) = entry {
-                    if current_bpf_time.saturating_sub(state.last_seen) > TIMEOUT_NS {
-                        v6_keys_to_remove.push(key);
+            // Clean up IPv6 allow list
+            {
+                let mut v6_map = state_clone.allow_list_v6.write().await;
+                let mut v6_keys_to_remove = Vec::new();
+                for entry in v6_map.iter() {
+                    if let Ok((key, state_val)) = entry {
+                        if current_bpf_time.saturating_sub(state_val.last_seen) > TIMEOUT_NS {
+                            v6_keys_to_remove.push(key);
+                        }
                     }
                 }
-            }
-            for key in v6_keys_to_remove {
-                let _ = allow_list_v6.remove(&key);
+                for key in v6_keys_to_remove {
+                    let _ = v6_map.remove(&key);
+                }
             }
         }
     });
-
     let session_store = MemoryStore::default();
     let session_layer = SessionManagerLayer::new(session_store)
         .with_secure(cfg!(not(debug_assertions))) // secure in debug off
