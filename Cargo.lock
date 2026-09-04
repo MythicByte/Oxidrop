@@ -919,6 +919,7 @@ dependencies = [
  "oxidrop-common",
  "oxidrop-ebpf",
  "rustix 1.1.4",
+ "serde",
  "tokio",
  "tower-http",
  "tower-sessions",
