@@ -84,7 +84,7 @@ pub struct FirewallConfig {
     pub udp_profile: RateProfile,
     pub icmp_profile: RateProfile,
     pub default_profile: RateProfile,
-    pub protcol_allowed: ActivaterEtherTypes,
+    pub protocol_allowed: ActivaterEtherTypes,
     /// if ddos protection is on
     pub ddos_activated: bool,
     /// The ethernet address for incoming traffic
@@ -165,7 +165,7 @@ impl Ipv6Packet {
 impl Default for FirewallConfig {
     fn default() -> Self {
         Self {
-            protcol_allowed: ActivaterEtherTypes::IPV4 | ActivaterEtherTypes::IPV6,
+            protocol_allowed: ActivaterEtherTypes::IPV4 | ActivaterEtherTypes::IPV6,
             ddos_activated: true,
             // TCP: Standard web traffic. ~1000 pps refill.
             tcp_profile: RateProfile {
