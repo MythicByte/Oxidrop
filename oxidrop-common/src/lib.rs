@@ -3,15 +3,21 @@
 #[cfg(feature = "user")]
 use aya::Pod;
 use network_types::eth::EtherType;
+#[cfg(feature = "user")]
+use serde::Deserialize;
+#[cfg(feature = "user")]
+use serde::Serialize;
 /// What to do with a list
 #[repr(C)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[cfg_attr(feature = "user", derive(Serialize, Deserialize))]
 pub enum Action {
     Allow = 0,
     Deny = 1,
 }
 #[repr(C)]
 #[derive(Clone, Copy, Debug)]
+#[cfg_attr(feature = "user", derive(Serialize, Deserialize))]
 pub struct AllowListState {
     pub action: Action,
     pub last_seen: u64,
@@ -20,6 +26,7 @@ pub struct AllowListState {
 /// which directions of ethenet adapter i need to check
 #[repr(C)]
 #[derive(Clone, Copy, Debug)]
+#[cfg_attr(feature = "user", derive(Serialize, Deserialize))]
 pub enum TraficDirection {
     Incoming = 0,
     Outgoing = 1,
@@ -27,6 +34,7 @@ pub enum TraficDirection {
 /// The ddos protection bucket
 #[repr(C)]
 #[derive(Clone, Copy, Debug)]
+#[cfg_attr(feature = "user", derive(Serialize, Deserialize))]
 pub struct TokenBucketState {
     pub tokens: u64,
     pub last_update: u64,
@@ -34,6 +42,7 @@ pub struct TokenBucketState {
 /// Erros for the firewall
 #[repr(C)]
 #[derive(Clone, Copy, Debug)]
+#[cfg_attr(feature = "user", derive(Serialize, Deserialize))]
 pub enum FirewallError {
     /// The packet is too short, and reading the header would go out of bounds.
     OutOfBounds = 0,
@@ -48,6 +57,7 @@ pub enum FirewallError {
 }
 bitflags::bitflags! {
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    #[cfg_attr(feature = "user", derive(Serialize, Deserialize))]
     pub struct ActivaterEtherTypes: u16 {
         const LOOP       = 1 << 0;
         const IPV4       = 1 << 1;
@@ -60,6 +70,7 @@ bitflags::bitflags! {
 /// Bucket State for Rate Limiting
 #[repr(C)]
 #[derive(Clone, Copy, Debug)]
+#[cfg_attr(feature = "user", derive(Serialize, Deserialize))]
 pub struct RateProfile {
     pub rate_shift: u64,
     pub burst: u64,
@@ -67,6 +78,7 @@ pub struct RateProfile {
 // Configuration provided by Userspace
 #[repr(C)]
 #[derive(Clone, Copy, Debug)]
+#[cfg_attr(feature = "user", derive(Serialize, Deserialize))]
 pub struct FirewallConfig {
     pub tcp_profile: RateProfile,
     pub udp_profile: RateProfile,
@@ -85,6 +97,7 @@ pub struct FirewallConfig {
 /// Total size: 16 bytes (Strictly aligned)
 #[repr(C)]
 #[derive(Clone, Copy, Debug)]
+#[cfg_attr(feature = "user", derive(Serialize, Deserialize))]
 pub struct Ipv4Packet {
     pub source_addr: u32,      // 4 bytes (Source IP)
     pub destination_addr: u32, // 4 bytes (Destination IP)
@@ -120,6 +133,7 @@ impl Ipv4Packet {
 /// Total size: 40 bytes (Strictly aligned)
 #[repr(C)]
 #[derive(Clone, Copy, Debug)]
+#[cfg_attr(feature = "user", derive(Serialize, Deserialize))]
 pub struct Ipv6Packet {
     pub source_addr: [u32; 4],      // 16 bytes
     pub destination_addr: [u32; 4], // 16 bytes
