@@ -46,7 +46,7 @@ use oxidrop_common::{
 };
 
 const DEFAULT_CONFIG: FirewallConfig = FirewallConfig {
-    protcol_allowed: ActivaterEtherTypes::union(
+    protocol_allowed: ActivaterEtherTypes::union(
         ActivaterEtherTypes::IPV4,
         ActivaterEtherTypes::IPV6,
     ),
@@ -151,7 +151,7 @@ fn xdp_firewall(ctx: XdpContext) -> Result<u32, FirewallError> {
         TraficDirection::Incoming
     };
     match unsafe { *ethhdr }.ether_type() {
-        Ok(EtherType::Ipv4) if config.protcol_allowed.contains(ActivaterEtherTypes::IPV4) => {
+        Ok(EtherType::Ipv4) if config.protocol_allowed.contains(ActivaterEtherTypes::IPV4) => {
             let ipv4hdr: *const Ipv4Hdr =
                 unsafe { ptr_at(&ctx, EthHdr::LEN).map_err(|_| FirewallError::OutOfBounds)? };
 
@@ -554,7 +554,7 @@ fn xdp_firewall(ctx: XdpContext) -> Result<u32, FirewallError> {
             )
         }
         // check if other typ is allowed and get through
-        Ok(x) if config.protcol_allowed.contains(x.into()) => Ok(xdp_action::XDP_PASS),
+        Ok(x) if config.protocol_allowed.contains(x.into()) => Ok(xdp_action::XDP_PASS),
         _ => {
             // protocol not supported
             return Err(FirewallError::UnsupportedProtocol);

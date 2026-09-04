@@ -148,7 +148,7 @@ pub async fn update_config(
         cfg.default_profile = p;
     }
     if let Some(types) = patch.protcol_allowed {
-        cfg.protcol_allowed = types;
+        cfg.protocol_allowed = types;
     }
     if let Some(activated) = patch.ddos_activated {
         cfg.ddos_activated = activated;
