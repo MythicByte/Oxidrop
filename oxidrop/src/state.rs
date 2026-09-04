@@ -4,6 +4,7 @@ use axum::{
     Json,
     Router,
     extract::State,
+    response::IntoResponse,
     routing::get,
 };
 use aya::maps::{
@@ -12,6 +13,7 @@ use aya::maps::{
     LpmTrie,
     MapData,
 };
+use hyper::StatusCode;
 use oxidrop_common::{
     Action,
     ActivaterEtherTypes,
@@ -57,38 +59,40 @@ pub struct ConfigPatch {
     #[serde(default)]
     pub ddos_activated: Option<bool>,
     #[serde(default)]
-    pub incoming_ethernet_adapter: Option<Option<usize>>,
+    pub incoming_ethernet_adapter: Option<usize>,
     #[serde(default)]
-    pub output_ethernet_adapter: Option<Option<usize>>,
+    pub output_ethernet_adapter: Option<usize>,
 }
 
 /// get config from the firewall
-pub async fn get_config(State(state): State<Arc<RwLock<FirewallState>>>) -> Json<FirewallConfig> {
-    let config_map = {
-        let state_guard = state.read().await;
-        state_guard.config.clone()
-    };
-
-    let cfg = config_map
-        .read()
-        .await
-        .get(&0, 0)
-        .expect("CONFIG map not initialized");
-    Json(cfg)
+pub async fn get_config(State(state): State<Arc<RwLock<FirewallState>>>) -> impl IntoResponse {
+    let state_guard = state.read().await;
+    match state_guard.config.read().await.get(&0, 0) {
+        Ok(cfg) => Json(cfg).into_response(),
+        Err(_) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "CONFIG map not initialized",
+        )
+            .into_response(),
+    }
 }
 
 /// update firewall config
 pub async fn update_config(
     State(state): State<Arc<RwLock<FirewallState>>>,
     Json(patch): Json<ConfigPatch>,
-) -> Json<FirewallConfig> {
-    let config_map = {
-        let state_guard = state.read().await;
-        state_guard.config.clone()
+) -> impl IntoResponse {
+    let state_guard = state.write_owned().await;
+    let mut cfg = match state_guard.config.read().await.get(&0, 0) {
+        Ok(cfg) => cfg,
+        Err(_) => {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "CONFIG map not initialized",
+            )
+                .into_response();
+        }
     };
-
-    let mut map = config_map.write().await;
-    let mut cfg = map.get(&0, 0).expect("CONFIG map not initialized");
 
     if let Some(p) = patch.tcp_profile {
         cfg.tcp_profile = p;
@@ -109,15 +113,21 @@ pub async fn update_config(
         cfg.ddos_activated = activated;
     }
     if let Some(adapter) = patch.incoming_ethernet_adapter {
-        cfg.incoming_ethernet_adapter = adapter;
+        cfg.incoming_ethernet_adapter = Some(adapter);
     }
     if let Some(adapter) = patch.output_ethernet_adapter {
-        cfg.output_ethernet_adapter = adapter;
+        cfg.output_ethernet_adapter = Some(adapter);
     }
 
-    map.set(0, cfg, 0).expect("Failed to update CONFIG map");
+    if state_guard.config.write().await.set(0, &cfg, 0).is_err() {
+        return (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "Failed to update CONFIG map",
+        )
+            .into_response();
+    }
 
-    Json(cfg)
+    Json(cfg).into_response()
 }
 /// Router for config
 pub fn config_router() -> Router<Arc<RwLock<FirewallState>>> {
