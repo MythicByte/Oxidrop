@@ -34,9 +34,12 @@ use serde::{
 };
 use tokio::sync::RwLock;
 
+use crate::db::Database;
+
 /// Firewall internal state
 #[derive(Clone)]
 pub struct FirewallState {
+    pub db: Database,
     pub config: Arc<RwLock<Array<MapData, FirewallConfig>>>,
     pub allow_list_v4: Arc<RwLock<HashMap<MapData, Ipv4Packet, AllowListState>>>,
     pub allow_list_v6: Arc<RwLock<HashMap<MapData, Ipv6Packet, AllowListState>>>,

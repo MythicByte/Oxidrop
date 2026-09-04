@@ -1,5 +1,6 @@
 pub mod api;
 pub mod auth;
+pub mod db;
 pub mod router;
 pub mod state;
 use std::sync::Arc;
@@ -158,7 +159,9 @@ async fn main() -> anyhow::Result<()> {
         ebpf.take_map("SUBNET_MATCHING_V6")
             .context("SUBNET_MATCHING_V6 map not found")?,
     )?;
+    let db = db::Database::new("sqlite://oxidrop.db").await?;
     let state = FirewallState {
+        db,
         config: Arc::new(RwLock::new(config_map)),
         allow_list_v4: Arc::new(RwLock::new(allow_list_v4)),
         allow_list_v6: Arc::new(RwLock::new(allow_list_v6)),
