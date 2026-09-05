@@ -33,6 +33,7 @@ use tower_sessions::{
     SessionManagerLayer,
     cookie::time::Duration,
 };
+use tracing::error;
 #[rustfmt::skip]
 use tracing::{
     Level,
@@ -160,6 +161,14 @@ async fn main() -> anyhow::Result<()> {
             .context("SUBNET_MATCHING_V6 map not found")?,
     )?;
     let db = db::Database::new("sqlite://oxidrop.db").await?;
+
+    let db_cloned = db.clone();
+    tokio::spawn(async move {
+        if let Err(e) = db_cloned.bootstrap_default_admin().await {
+            error!("Failed to bootstrap default admin: {}", e);
+        }
+    });
+
     let state = FirewallState {
         db,
         config: Arc::new(RwLock::new(config_map)),

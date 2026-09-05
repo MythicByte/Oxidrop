@@ -7,3 +7,6 @@ target/
 **/*.rs.bk
 
 *.db
+
+# Ensure the SQLx offline metadata directory is tracked 
+!.sqlx/
