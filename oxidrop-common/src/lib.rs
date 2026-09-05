@@ -104,8 +104,10 @@ pub struct Ipv4Packet {
     pub source_port: u16,      // 2 bytes (Source Port)
     pub destination_port: u16, // 2 bytes (Destination Port)
     pub protocol: u8,          // 1 byte  (Protocol - TCP/UDP)
-    pub _pad: u8,              // 1 byte  - ZERO THIS OUT
-    pub _pad2: u16,            // 2 bytes - ZERO THIS OUT (Ensures 4-byte alignment)
+    #[cfg_attr(feature = "user", serde(default))]
+    pub _pad: u8, // 1 byte  - ZERO THIS OUT
+    #[cfg_attr(feature = "user", serde(default))]
+    pub _pad2: u16, // 2 bytes - ZERO THIS OUT (Ensures 4-byte alignment)
 }
 
 impl Ipv4Packet {
@@ -140,7 +142,8 @@ pub struct Ipv6Packet {
     pub source_port: u16,           // 2 bytes
     pub destination_port: u16,      // 2 bytes
     pub protocol: u8,               // 1 byte
-    pub _pad: [u8; 3],              // 3 bytes - ZERO THIS OUT (Ensures 4-byte alignment)
+    #[cfg_attr(feature = "user", serde(default))]
+    pub _pad: [u8; 3], // 3 bytes - ZERO THIS OUT (Ensures 4-byte alignment)
 }
 
 impl Ipv6Packet {
