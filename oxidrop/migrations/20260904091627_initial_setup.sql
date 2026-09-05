@@ -6,6 +6,13 @@ CREATE TABLE users (
     -- Roles
     role TEXT NOT NULL DEFAULT 'viewer' CHECK(role IN ('admin', 'viewer')),
 
+    -- Permissions Bitmask: 
+    -- 1 = Create (001)
+    -- 2 = Modify (010)
+    -- 4 = Delete (100)
+    -- Example: 7 (111) = All permissions, 3 (011) = Create and Modify
+    action_permissions INTEGER NOT NULL DEFAULT 0 CHECK(action_permissions BETWEEN 0 AND 7),
+
     -- Password must be changed (0 = no, 1 = yes)
     password_must_be_changed INTEGER NOT NULL DEFAULT 1 CHECK(password_must_be_changed IN (0, 1)),
     
