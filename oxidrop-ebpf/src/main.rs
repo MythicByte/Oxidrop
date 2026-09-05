@@ -4,7 +4,10 @@
 use core::mem;
 
 use aya_ebpf::{
-    bindings::xdp_action,
+    bindings::{
+        BPF_F_NO_PREALLOC,
+        xdp_action,
+    },
     macros::{
         map,
         xdp,
@@ -102,11 +105,13 @@ static PACKET_COUNTS_V6: LruHashMap<Ipv6Packet, TokenBucketState> =
 
 /// IPv4 Subnet Matching (Key is a 32-bit integer)
 #[map]
-static SUBNET_MATCHING_V4: LpmTrie<u32, Action> = LpmTrie::with_max_entries(2048, 0);
+static SUBNET_MATCHING_V4: LpmTrie<u32, Action> =
+    LpmTrie::with_max_entries(2048, BPF_F_NO_PREALLOC);
 
 /// IPv6 Subnet Matching (Key is a 128-bit )
 #[map]
-static SUBNET_MATCHING_V6: LpmTrie<[u32; 4], Action> = LpmTrie::with_max_entries(2048, 0);
+static SUBNET_MATCHING_V6: LpmTrie<[u32; 4], Action> =
+    LpmTrie::with_max_entries(2048, BPF_F_NO_PREALLOC);
 #[xdp]
 pub fn oxidrop(ctx: XdpContext) -> u32 {
     match xdp_firewall(ctx) {
