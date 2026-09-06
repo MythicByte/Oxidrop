@@ -31,6 +31,7 @@ use tower_sessions::{
     Expiry,
     MemoryStore,
     SessionManagerLayer,
+    cookie::SameSite,
 };
 use tracing::error;
 #[rustfmt::skip] use tracing::{
@@ -108,7 +109,10 @@ async fn main() -> anyhow::Result<()> {
         .with_secure(cfg!(not(debug_assertions))) // secure in debug off
         .with_expiry(Expiry::OnInactivity(
             tower_sessions::cookie::time::Duration::minutes(10),
-        ));
+        ))
+        .with_http_only(true)
+        .with_same_site(SameSite::Strict)
+        .with_name("__Host-session");
 
     let app = combined_router(state)
         .layer(
