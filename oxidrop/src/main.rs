@@ -46,8 +46,7 @@ use tower_sessions::{
     SessionManagerLayer,
 };
 use tracing::error;
-#[rustfmt::skip]
-use tracing::{
+#[rustfmt::skip] use tracing::{
     Level,
     info,
     warn,

@@ -146,7 +146,7 @@ unsafe fn ptr_at<T>(ctx: &XdpContext, offset: usize) -> Result<*const T, ()> {
 fn xdp_firewall(ctx: XdpContext) -> Result<u32, FirewallError> {
     let ethhdr: *const EthHdr = unsafe { ptr_at(&ctx, 0).map_err(|_| FirewallError::OutOfBounds)? };
     let config = CONFIG.get(0).unwrap_or(&DEFAULT_CONFIG);
-    let ingress = ctx.ingress_ifindex();
+    let ingress = ctx.ingress_ifindex() as u32;
 
     let direction = if Some(ingress) == config.incoming_ethernet_adapter {
         TraficDirection::Incoming

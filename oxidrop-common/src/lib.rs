@@ -88,9 +88,9 @@ pub struct FirewallConfig {
     /// if ddos protection is on
     pub ddos_activated: bool,
     /// The ethernet address for incoming traffic
-    pub incoming_ethernet_adapter: Option<usize>,
+    pub incoming_ethernet_adapter: Option<u32>,
     /// The ethernet address for outcoming traffic
-    pub output_ethernet_adapter: Option<usize>,
+    pub output_ethernet_adapter: Option<u32>,
 }
 
 /// Tightly packed 5-Tuple for IPv4 state tracking

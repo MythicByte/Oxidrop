@@ -100,9 +100,9 @@ pub struct ConfigPatch {
     #[serde(default)]
     pub ddos_activated: Option<bool>,
     #[serde(default)]
-    pub incoming_ethernet_adapter: Option<usize>,
+    pub incoming_ethernet_adapter: Option<u32>,
     #[serde(default)]
-    pub output_ethernet_adapter: Option<usize>,
+    pub output_ethernet_adapter: Option<u32>,
 }
 
 const MAX_RATE_SHIFT: u64 = 63;
