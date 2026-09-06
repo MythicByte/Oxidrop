@@ -110,7 +110,7 @@ async fn main() -> anyhow::Result<()> {
             tower_sessions::cookie::time::Duration::minutes(10),
         ));
 
-    let app = combined_router()
+    let app = combined_router(state)
         .layer(
             ServiceBuilder::new()
                 .layer(CatchPanicLayer::new())

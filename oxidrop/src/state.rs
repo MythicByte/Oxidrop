@@ -482,7 +482,7 @@ pub async fn remove_subnet_matching_v6(
 /// Router for config
 pub fn config_router() -> Router<FirewallState> {
     Router::new()
-        .route("/config", get(get_config).post(update_config))
+        .route("/", get(get_config).post(update_config))
         .route(
             "/allow_list/v4",
             get(get_allow_list_v4)
@@ -606,7 +606,7 @@ mod tests {
         let state = create_test_state().await;
         let router = config_router().with_state(state.clone());
 
-        let (status, body) = make_request(&router, Method::GET, "/config", None).await;
+        let (status, body) = make_request(&router, Method::GET, "/", None).await;
         assert_eq!(status, StatusCode::OK);
 
         let config: FirewallConfig = serde_json::from_str(&body).unwrap();
@@ -624,11 +624,10 @@ mod tests {
             "ddos_activated": false
         });
 
-        let (status, _) =
-            make_request(&router, Method::POST, "/config", Some(patch.to_string())).await;
+        let (status, _) = make_request(&router, Method::POST, "/", Some(patch.to_string())).await;
         assert_eq!(status, StatusCode::OK);
 
-        let (status, body) = make_request(&router, Method::GET, "/config", None).await;
+        let (status, body) = make_request(&router, Method::GET, "/", None).await;
         assert_eq!(status, StatusCode::OK);
         let config: FirewallConfig = serde_json::from_str(&body).unwrap();
         assert_eq!(config.tcp_profile.rate_shift, 21);
@@ -763,13 +762,8 @@ mod tests {
         let state = create_test_state().await;
         let router = config_router().with_state(state.clone());
 
-        let (status, _) = make_request(
-            &router,
-            Method::POST,
-            "/config",
-            Some("invalid json".to_string()),
-        )
-        .await;
+        let (status, _) =
+            make_request(&router, Method::POST, "/", Some("invalid json".to_string())).await;
         assert_eq!(status, StatusCode::BAD_REQUEST);
 
         let patch = serde_json::json!({
@@ -779,8 +773,7 @@ mod tests {
             }
         });
 
-        let (status, _) =
-            make_request(&router, Method::POST, "/config", Some(patch.to_string())).await;
+        let (status, _) = make_request(&router, Method::POST, "/", Some(patch.to_string())).await;
         assert_ne!(status, StatusCode::OK); // Expect invalid rate_shift to be rejected
 
         let rule = serde_json::json!({
@@ -814,13 +807,8 @@ mod tests {
                     }
                 });
 
-                let (status, _) = make_request(
-                    &router_clone,
-                    Method::POST,
-                    "/config",
-                    Some(patch.to_string()),
-                )
-                .await;
+                let (status, _) =
+                    make_request(&router_clone, Method::POST, "/", Some(patch.to_string())).await;
                 status
             });
             handles.push(handle);
@@ -835,7 +823,7 @@ mod tests {
             assert_eq!(result, StatusCode::OK);
         }
 
-        let (status, body) = make_request(&router, Method::GET, "/config", None).await;
+        let (status, body) = make_request(&router, Method::GET, "/", None).await;
         assert_eq!(status, StatusCode::OK);
         let config: FirewallConfig = serde_json::from_str(&body).unwrap();
 
@@ -1037,12 +1025,11 @@ mod tests {
             "ddos_activated": false
         });
 
-        let (status, _) =
-            make_request(&router, Method::POST, "/config", Some(patch.to_string())).await;
+        let (status, _) = make_request(&router, Method::POST, "/", Some(patch.to_string())).await;
         assert_eq!(status, StatusCode::OK);
 
         for _ in 0..5 {
-            let (status, body) = make_request(&router, Method::GET, "/config", None).await;
+            let (status, body) = make_request(&router, Method::GET, "/", None).await;
             assert_eq!(status, StatusCode::OK);
             let config: FirewallConfig = serde_json::from_str(&body).unwrap();
             assert_eq!(config.tcp_profile.rate_shift, 21);
