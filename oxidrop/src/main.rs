@@ -1,6 +1,7 @@
 pub mod api;
 pub mod auth;
 pub mod db;
+pub mod ebpf;
 pub mod router;
 pub mod state;
 use std::{
@@ -8,24 +9,9 @@ use std::{
     time::Duration,
 };
 
-use anyhow::Context as _;
-use aya::{
-    maps::{
-        Array,
-        HashMap,
-        LpmTrie,
-    },
-    programs::{
-        Xdp,
-        XdpMode,
-    },
-};
 use clap::Parser;
 use hyper::StatusCode;
-use oxidrop_common::{
-    AllowListState,
-    TokenBucketState,
-};
+use oxidrop_common::FirewallConfig;
 use rustix::time::{
     ClockId,
     clock_gettime,
@@ -49,25 +35,27 @@ use tracing::error;
 #[rustfmt::skip] use tracing::{
     Level,
     info,
-    warn,
 };
 use tracing_subscriber::FmtSubscriber;
 
 use crate::{
+    ebpf::EbpfProgramm,
     router::combined_router,
     state::FirewallState,
 };
 
 #[derive(Debug, Parser)]
-#[command(arg_required_else_help = true)]
-struct Opt {
-    /// internet interface name
-    #[clap(short, long, default_value = "eth0")]
-    iface: String,
-
+pub struct Opt {
     /// choose http port
     #[clap(long, default_value_t = 3000)]
     http_port: u16,
+    /// The network interface index for incoming traffic (e.g., 2)
+    #[clap(long, short)]
+    incoming_adapter: Option<u32>,
+
+    /// The network interface index for outgoing traffic (e.g., 3)
+    #[clap(long, short)]
+    output_adapter: Option<u32>,
 }
 
 #[tokio::main]
@@ -83,94 +71,19 @@ async fn main() -> anyhow::Result<()> {
 
     info!("Application ist starting");
 
-    // This will include your eBPF object file as raw bytes at compile-time and load it at
-    // runtime. This approach is recommended for most real-world use cases. If you would
-    // like to specify the eBPF program at runtime rather than at compile-time, you can
-    // reach for `Bpf::load_file` instead.
-    let mut ebpf = aya::Ebpf::load(aya::include_bytes_aligned!(concat!(
-        env!("OUT_DIR"),
-        "/oxidrop"
-    )))?;
-    match aya_log::EbpfLogger::init(&mut ebpf) {
-        Err(e) => {
-            // This can happen if you remove all log statements from your eBPF program.
-            warn!("failed to initialize eBPF logger: {e}");
-        }
-        Ok(logger) => {
-            let mut logger =
-                tokio::io::unix::AsyncFd::with_interest(logger, tokio::io::Interest::READABLE)?;
-            tokio::task::spawn(async move {
-                loop {
-                    let mut guard = logger.readable_mut().await.expect("eBPF guard failed");
-                    guard.get_inner_mut().flush();
-                    guard.clear_ready();
-                }
-            });
-        }
-    }
-    let Opt { iface, http_port } = opt;
-    let program: &mut Xdp = ebpf
-        .program_mut("oxidrop")
-        .expect("Getting the eBPF failed")
-        .try_into()?;
-    program.load()?;
-    program.attach(&iface, XdpMode::default())
-        .context("failed to attach the XDP program with default mode - try changing XdpMode::default() to XdpMode::Skb")?;
-    info!("XDP program attached to {}", &iface);
+    let Opt { http_port, .. } = opt;
+    let mut ebpf_programm = EbpfProgramm::new()?;
+    ebpf_programm.reboot(&FirewallConfig::default(), &opt)?;
+    let (
+        config_map,
+        allow_list_v4,
+        allow_list_v6,
+        packet_counts_v4,
+        packet_counts_v6,
+        subnet_matching_v4,
+        subnet_matching_v6,
+    ) = ebpf_programm.get_maps()?;
 
-    let config_map: aya::maps::Array<aya::maps::MapData, oxidrop_common::FirewallConfig> =
-        Array::try_from(ebpf.take_map("CONFIG").context("CONFIG map not found")?)?;
-
-    let allow_list_v4: aya::maps::HashMap<
-        aya::maps::MapData,
-        oxidrop_common::Ipv4Packet,
-        AllowListState,
-    > = HashMap::try_from(
-        ebpf.take_map("ALLOW_LIST_V4")
-            .context("ALLOW_LIST_V4 map not found")?,
-    )?;
-
-    let allow_list_v6: aya::maps::HashMap<
-        aya::maps::MapData,
-        oxidrop_common::Ipv6Packet,
-        AllowListState,
-    > = HashMap::try_from(
-        ebpf.take_map("ALLOW_LIST_V6")
-            .context("ALLOW_LIST_V6 map not found")?,
-    )?;
-
-    let packet_counts_v4: aya::maps::HashMap<
-        aya::maps::MapData,
-        oxidrop_common::Ipv4Packet,
-        TokenBucketState,
-    > = HashMap::try_from(
-        ebpf.take_map("PACKET_COUNTS_V4")
-            .context("PACKET_COUNTS_V4 map not found")?,
-    )?;
-
-    let packet_counts_v6: aya::maps::HashMap<
-        aya::maps::MapData,
-        oxidrop_common::Ipv6Packet,
-        TokenBucketState,
-    > = HashMap::try_from(
-        ebpf.take_map("PACKET_COUNTS_V6")
-            .context("PACKET_COUNTS_V6 map not found")?,
-    )?;
-
-    let subnet_matching_v4: aya::maps::LpmTrie<aya::maps::MapData, u32, oxidrop_common::Action> =
-        LpmTrie::try_from(
-            ebpf.take_map("SUBNET_MATCHING_V4")
-                .context("SUBNET_MATCHING_V4 map not found")?,
-        )?;
-
-    let subnet_matching_v6: aya::maps::LpmTrie<
-        aya::maps::MapData,
-        [u32; 4],
-        oxidrop_common::Action,
-    > = LpmTrie::try_from(
-        ebpf.take_map("SUBNET_MATCHING_V6")
-            .context("SUBNET_MATCHING_V6 map not found")?,
-    )?;
     let db = db::Database::new("sqlite://oxidrop.db").await?;
 
     let db_cloned = db.clone();
