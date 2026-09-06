@@ -17,7 +17,7 @@ use crate::{
 };
 
 /// combines all router to one, gives back to axum to serve it
-pub(crate) fn combined_router(state: FirewallState) -> Router {
+pub fn combined_router(state: FirewallState) -> Router {
     // Router::new().merge(unsafe_router()).merge(safe_router())
     let router = Router::new().merge(unsafe_router()).merge(safe_router());
     // .merge(unsafe_router());

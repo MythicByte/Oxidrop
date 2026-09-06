@@ -1,9 +1,3 @@
-pub mod api;
-pub mod auth;
-pub mod db;
-pub mod ebpf;
-pub mod router;
-pub mod state;
 use std::{
     sync::Arc,
     time::Duration,
@@ -13,6 +7,16 @@ use anyhow::Context;
 use axum_login::AuthManagerLayerBuilder;
 use clap::Parser;
 use hyper::StatusCode;
+use oxidrop::{
+    Opt,
+    db::{
+        self,
+        Database,
+    },
+    ebpf::EbpfProgramm,
+    router::combined_router,
+    state::FirewallState,
+};
 use oxidrop_common::FirewallConfig;
 use rustix::time::{
     ClockId,
@@ -47,27 +51,6 @@ use tracing::error;
     info,
 };
 use tracing_subscriber::FmtSubscriber;
-
-use crate::{
-    db::Database,
-    ebpf::EbpfProgramm,
-    router::combined_router,
-    state::FirewallState,
-};
-
-#[derive(Debug, Parser)]
-pub struct Opt {
-    /// choose http port
-    #[clap(long, default_value_t = 3000)]
-    http_port: u16,
-    /// The network interface index for incoming traffic (e.g., 2)
-    #[clap(long, short)]
-    incoming_adapter: Option<u32>,
-
-    /// The network interface index for outgoing traffic (e.g., 3)
-    #[clap(long, short)]
-    output_adapter: Option<u32>,
-}
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
