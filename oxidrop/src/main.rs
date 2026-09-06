@@ -29,9 +29,16 @@ use tower_http::{
 };
 use tower_sessions::{
     Expiry,
-    MemoryStore,
     SessionManagerLayer,
     cookie::SameSite,
+};
+use tower_sessions_redis_store::{
+    RedisStore,
+    fred::{
+        clients::Pool,
+        interfaces::ClientLike,
+        types::config::Config,
+    },
 };
 use tracing::error;
 #[rustfmt::skip] use tracing::{
@@ -103,16 +110,8 @@ async fn main() -> anyhow::Result<()> {
     };
     let state_clone = state.clone();
     spawn_cleanup_connection_map_after_10_minutes(state_clone);
-    // Spawn the background cleanup task
-    let session_store = MemoryStore::default();
-    let session_layer = SessionManagerLayer::new(session_store)
-        .with_secure(cfg!(not(debug_assertions))) // secure in debug off
-        .with_expiry(Expiry::OnInactivity(
-            tower_sessions::cookie::time::Duration::minutes(10),
-        ))
-        .with_http_only(true)
-        .with_same_site(SameSite::Strict)
-        .with_name("__Host-session");
+
+    let session_layer = session_store_build().await?;
 
     let app = combined_router(state)
         .layer(
@@ -200,4 +199,22 @@ fn spawn_cleanup_connection_map_after_10_minutes(state: FirewallState) {
             }
         }
     });
+}
+async fn session_store_build() -> anyhow::Result<SessionManagerLayer<RedisStore<Pool>>> {
+    let pool = Pool::new(Config::default(), None, None, None, 6)?;
+
+    let _redis_conn = pool.connect();
+    pool.wait_for_connect().await?;
+
+    // Spawn the background cleanup task
+    let session_store = RedisStore::new(pool);
+    let session_layer = SessionManagerLayer::new(session_store)
+        .with_secure(cfg!(not(debug_assertions))) // secure in debug off
+        .with_expiry(Expiry::OnInactivity(
+            tower_sessions::cookie::time::Duration::minutes(10),
+        ))
+        .with_http_only(true)
+        .with_same_site(SameSite::Strict)
+        .with_name("__Host-session");
+    Ok(session_layer)
 }

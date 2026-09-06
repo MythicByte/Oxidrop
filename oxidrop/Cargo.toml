@@ -6,9 +6,10 @@ edition.workspace = true
 license.workspace = true
 
 [dependencies]
+tower-sessions-redis-store = "0.16.0"
 tower = "0.5.3"
 oxidrop-common = { path = "../oxidrop-common", features = ["user"] }
-tower-sessions = "0.15.0"
+tower-sessions = "0.14.0"
 tower-http = { version = "0.7", features = ["fs","trace","catch-panic","timeout","limit","compression-gzip", "compression-br","cors"] }
 clap = { version = "4.5.20", default-features = false, features = ["std","help","error-context","color","derive"] }
 axum = "0.8.9"
