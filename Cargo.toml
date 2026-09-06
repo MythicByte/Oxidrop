@@ -8,7 +8,7 @@ members = [
 default-members = ["oxidrop", "oxidrop-common"]
 
 [workspace.package]
-license = "GPLv2"
+license = "GPL-2.0-only"
 edition = "2024"
 
 [workspace.dependencies]
