@@ -1,9 +1,19 @@
-use axum::Router;
+use axum::{
+    Router,
+    routing::{
+        get,
+        post,
+    },
+};
+use axum_login::login_required;
 use tower_http::services::ServeDir;
 
-use crate::state::{
-    FirewallState,
-    config_router,
+use crate::{
+    db::Database,
+    state::{
+        FirewallState,
+        config_router,
+    },
 };
 
 /// combines all router to one, gives back to axum to serve it
@@ -20,7 +30,9 @@ pub(crate) fn combined_router(state: FirewallState) -> Router {
 ///
 /// seperate the unsafe route, where a User is not logged in
 fn unsafe_router() -> Router<FirewallState> {
-    Router::new().without_v07_checks()
+    Router::new()
+        .without_v07_checks()
+        .route("/login", post(crate::auth::login))
 }
 /// # User **is** Authenticated
 ///
@@ -28,8 +40,7 @@ fn unsafe_router() -> Router<FirewallState> {
 fn safe_router() -> Router<FirewallState> {
     Router::new()
         .without_v07_checks()
+        .route("/logout", get(crate::auth::logout))
         .nest("/config", config_router())
-    // .route("/", todo!())
-    // // removes the session id
-    // .route("/logout", todo!())
+        .route_layer(login_required!(Database, login_url = "/api/v1/login"))
 }

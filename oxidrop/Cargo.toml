@@ -6,6 +6,8 @@ edition.workspace = true
 license.workspace = true
 
 [dependencies]
+secrecy = { version = "0.10.3", features = ["serde"] }
+axum-login = "0.18.0"
 tower-sessions-redis-store = "0.16.0"
 tower = "0.5.3"
 oxidrop-common = { path = "../oxidrop-common", features = ["user"] }

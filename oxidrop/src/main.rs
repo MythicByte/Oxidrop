@@ -10,6 +10,7 @@ use std::{
 };
 
 use anyhow::Context;
+use axum_login::AuthManagerLayerBuilder;
 use clap::Parser;
 use hyper::StatusCode;
 use oxidrop_common::FirewallConfig;
@@ -112,6 +113,7 @@ async fn main() -> anyhow::Result<()> {
     spawn_cleanup_connection_map_after_10_minutes(state_clone);
 
     let session_layer = session_store_build().await?;
+    let auth_layer = AuthManagerLayerBuilder::new(state.db.clone(), session_layer).build();
 
     let app = combined_router(state)
         .layer(
@@ -126,7 +128,7 @@ async fn main() -> anyhow::Result<()> {
                 .layer(CompressionLayer::new())
                 .layer(CorsLayer::permissive().max_age(Duration::from_hours(1))),
         )
-        .layer(session_layer);
+        .layer(auth_layer);
     let addr = format!("127.0.0.1:{}", http_port);
     let listener = tokio::net::TcpListener::bind(&addr)
         .await

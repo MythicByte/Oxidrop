@@ -1,19 +1,15 @@
-use std::{
-    str::FromStr,
-    time::{
-        SystemTime,
-        UNIX_EPOCH,
-    },
-};
+use std::str::FromStr;
 
 use argon2::{
     Argon2,
-    PasswordHash,
     PasswordHasher,
-    PasswordVerifier,
     password_hash::phc::SaltString,
 };
 use bitflags::bitflags;
+use serde::{
+    Deserialize,
+    Serialize,
+};
 use sqlx::{
     SqlitePool,
     sqlite::{
@@ -25,7 +21,7 @@ use thiserror::Error;
 use tracing::warn;
 
 bitflags! {
-    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    #[derive(Debug, Clone, Copy, PartialEq, Eq,Serialize,Deserialize)]
     pub struct ActionPermissions: u8 {
         const NONE   = 0;
         const CREATE = 1; // 001
@@ -33,7 +29,7 @@ bitflags! {
         const DELETE = 4; // 100
     }
 }
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub enum RolesUser {
     Viewer = 0,
     Admin = 1,
@@ -227,65 +223,6 @@ impl Database {
         }
     }
 
-    /// Authenticates a user.
-    /// Returns the user ID if successful, or InvalidCredentials if it fails.
-    pub async fn login_user(&self, username: &str, password: &str) -> Result<i64, UserError> {
-        // Fetch the hash and the is_active flag.
-        // We MUST check if the account is disabled.
-        let record = sqlx::query!(
-            r#"
-            SELECT id, password_hash, is_active
-            FROM users
-            WHERE username = ?
-            "#,
-            username
-        )
-        .fetch_optional(&self.pool)
-        .await?;
-
-        // Prevent Username Enumeration.
-        // If the user isn't found, we return the generic InvalidCredentials error.
-        let user = match record {
-            Some(u) => u,
-            None => {
-                // To prevent timing attacks, you would technically hash a dummy password here,
-                return Err(UserError::InvalidCredentials);
-            }
-        };
-
-        // If the user's is_active flag is 0, reject them immediately.
-        if user.is_active == 0 {
-            return Err(UserError::InvalidCredentials);
-        }
-
-        let parsed_hash = PasswordHash::new(&user.password_hash)
-            .map_err(|_| UserError::Internal("Invalid hash stored in DB".to_string()))?;
-
-        // Verify the password.
-        if Argon2::default()
-            .verify_password(password.as_bytes(), &parsed_hash)
-            .is_err()
-        {
-            return Err(UserError::InvalidCredentials);
-        }
-
-        // Update the last_login_at timestamp using Unix Epoch.
-        let now = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_secs() as i64;
-
-        sqlx::query!(
-            r#"UPDATE users SET last_login_at = ? WHERE id = ?"#,
-            now,
-            user.id
-        )
-        .execute(&self.pool)
-        .await?;
-
-        Ok(user.id)
-    }
-
     /// Deletes a user by their username.
     pub async fn delete_user(
         &self,
@@ -468,114 +405,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_auth_login_succeeds_and_updates_last_login() {
-        let db = setup_test_db().await;
-        let username = "active_user";
-        let password = "SuperSecretPassword123!";
-
-        // Provision the user
-        db.create_user(
-            &admin_ctx(),
-            username,
-            password,
-            RolesUser::Viewer,
-            ActionPermissions::NONE,
-        )
-        .await
-        .unwrap();
-
-        // Perform login
-        let user_id = db
-            .login_user(username, password)
-            .await
-            .expect("Login failed for valid credentials");
-
-        // Verify side-effect: last_login_at should be populated with the Unix epoch timestamp
-        let last_login: Option<i64> =
-            sqlx::query_scalar!("SELECT last_login_at FROM users WHERE id = ?", user_id)
-                .fetch_one(&db.pool)
-                .await
-                .expect("Failed to query user record");
-
-        assert!(
-            last_login.is_some(),
-            "last_login_at was not updated after successful login"
-        );
-        assert!(
-            last_login.unwrap() > 0,
-            "last_login_at timestamp is invalid"
-        );
-    }
-
-    #[tokio::test]
-    async fn test_auth_login_fails_for_inactive_user() {
-        let db = setup_test_db().await;
-        let username = "disabled_user";
-        let password = "ValidPassword123!";
-        let ctx = admin_ctx();
-
-        db.create_user(
-            &ctx,
-            username,
-            password,
-            RolesUser::Viewer,
-            ActionPermissions::NONE,
-        )
-        .await
-        .unwrap();
-
-        // Deactivate the user (is_active = 0)
-        db.modify_user(
-            &ctx,
-            username,
-            RolesUser::Viewer,
-            ActionPermissions::NONE,
-            0,
-        )
-        .await
-        .expect("Failed to modify user state");
-
-        // Attempting to log in should now yield a generic InvalidCredentials error
-        let err = db.login_user(username, password).await.unwrap_err();
-        assert!(matches!(err, UserError::InvalidCredentials));
-    }
-
-    #[tokio::test]
-    async fn test_auth_generic_failure_for_wrong_password_or_missing_user() {
-        let db = setup_test_db().await;
-        let username = "enum_user";
-
-        db.create_user(
-            &admin_ctx(),
-            username,
-            "CorrectPassword123!",
-            RolesUser::Viewer,
-            ActionPermissions::NONE,
-        )
-        .await
-        .unwrap();
-
-        // Existing user, wrong password
-        let err_wrong_pw = db
-            .login_user(username, "WrongPassword123!")
-            .await
-            .unwrap_err();
-        assert!(
-            matches!(err_wrong_pw, UserError::InvalidCredentials),
-            "Wrong password did not return generic error"
-        );
-
-        // Non-existent user
-        let err_missing = db
-            .login_user("ghost_user", "CorrectPassword123!")
-            .await
-            .unwrap_err();
-        assert!(
-            matches!(err_missing, UserError::InvalidCredentials),
-            "Missing user did not return generic error (enumeration risk!)"
-        );
-    }
-    #[tokio::test]
     async fn test_crud_rename_user_enforces_unique_constraint() {
         let db = setup_test_db().await;
         let ctx = admin_ctx();
@@ -648,38 +477,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_init_bootstrap_admin_only_when_empty() {
-        let db = setup_test_db().await;
-
-        //  First run on an empty DB should successfully create the default admin
-        db.bootstrap_default_admin()
-            .await
-            .expect("Failed to bootstrap default admin");
-
-        // Verify the admin can actually log in with the temporary password
-        let _admin_id = db
-            .login_user("admin", "password")
-            .await
-            .expect("Bootstrapped admin login failed");
-
-        // Second run should do nothing (it should not crash or create duplicate users)
-        db.bootstrap_default_admin()
-            .await
-            .expect("Second bootstrap attempt caused an error");
-
-        // Verify the table count is still exactly 1
-        let count: i64 = sqlx::query_scalar!("SELECT COUNT(*) FROM users")
-            .fetch_one(&db.pool)
-            .await
-            .unwrap();
-
-        assert_eq!(
-            count, 1,
-            "Bootstrap created multiple users instead of acting as a no-op"
-        );
-    }
-
-    #[tokio::test]
     async fn test_crud_operations_on_nonexistent_user_yield_not_found() {
         let db = setup_test_db().await;
         let ctx = admin_ctx();
@@ -704,38 +501,6 @@ mod tests {
         assert!(matches!(err_ren, UserError::NotFound(name) if name == ghost));
     }
 
-    #[tokio::test]
-    async fn test_crud_admin_can_successfully_delete_user() {
-        let db = setup_test_db().await;
-        let ctx = admin_ctx();
-        let target = "doomed_user";
-
-        // Setup: Provision a user
-        db.create_user(
-            &ctx,
-            target,
-            "ValidPassword123!",
-            RolesUser::Viewer,
-            ActionPermissions::NONE,
-        )
-        .await
-        .unwrap();
-
-        // Action: Delete the user
-        db.delete_user(target, &ctx)
-            .await
-            .expect("Admin failed to delete user");
-
-        // Verification: Ensure they can no longer log in
-        let err = db
-            .login_user(target, "ValidPassword123!")
-            .await
-            .unwrap_err();
-        assert!(
-            matches!(err, UserError::InvalidCredentials),
-            "Deleted user was still able to attempt login, indicating a soft-delete or failure."
-        );
-    }
     #[tokio::test]
     async fn test_concurrency_race_condition_on_user_creation() {
         let db = Arc::new(setup_test_db().await);
