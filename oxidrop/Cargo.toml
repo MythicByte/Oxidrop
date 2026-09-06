@@ -6,9 +6,10 @@ edition.workspace = true
 license.workspace = true
 
 [dependencies]
+tower = "0.5.3"
 oxidrop-common = { path = "../oxidrop-common", features = ["user"] }
 tower-sessions = "0.15.0"
-tower-http = { version = "0.7", features = ["fs"] }
+tower-http = { version = "0.7", features = ["fs","trace","catch-panic","timeout","limit","compression-gzip", "compression-br","cors"] }
 clap = { version = "4.5.20", default-features = false, features = ["std","help","error-context","color","derive"] }
 axum = "0.8.9"
 hyper = "1.10.1"
@@ -36,7 +37,6 @@ tokio = { workspace = true, features = [
 tracing = { workspace = true }
 
 [dev-dependencies]
-tower = "0.5.3"
 etherparse = "0.21.0"
 serde_json = "1.0.151"
 oxidrop-common = { path = "../oxidrop-common",features=["user"] }

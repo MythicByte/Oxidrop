@@ -3,7 +3,10 @@ pub mod auth;
 pub mod db;
 pub mod router;
 pub mod state;
-use std::sync::Arc;
+use std::{
+    sync::Arc,
+    time::Duration,
+};
 
 use anyhow::Context as _;
 use aya::{
@@ -18,6 +21,7 @@ use aya::{
     },
 };
 use clap::Parser;
+use hyper::StatusCode;
 use oxidrop_common::{
     AllowListState,
     TokenBucketState,
@@ -27,11 +31,19 @@ use rustix::time::{
     clock_gettime,
 };
 use tokio::sync::RwLock;
+use tower::ServiceBuilder;
+use tower_http::{
+    catch_panic::CatchPanicLayer,
+    compression::CompressionLayer,
+    cors::CorsLayer,
+    limit::RequestBodyLimitLayer,
+    timeout::TimeoutLayer,
+    trace::TraceLayer,
+};
 use tower_sessions::{
     Expiry,
     MemoryStore,
     SessionManagerLayer,
-    cookie::time::Duration,
 };
 use tracing::error;
 #[rustfmt::skip]
@@ -225,9 +237,24 @@ async fn main() -> anyhow::Result<()> {
     let session_store = MemoryStore::default();
     let session_layer = SessionManagerLayer::new(session_store)
         .with_secure(cfg!(not(debug_assertions))) // secure in debug off
-        .with_expiry(Expiry::OnInactivity(Duration::minutes(10)));
+        .with_expiry(Expiry::OnInactivity(
+            tower_sessions::cookie::time::Duration::minutes(10),
+        ));
 
-    let app = combined_router().layer(session_layer);
+    let app = combined_router()
+        .layer(
+            ServiceBuilder::new()
+                .layer(CatchPanicLayer::new())
+                .layer(TraceLayer::new_for_http())
+                .layer(TimeoutLayer::with_status_code(
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Duration::from_secs(30),
+                ))
+                .layer(RequestBodyLimitLayer::new(1024 * 1024 * 5)) // 5MB
+                .layer(CompressionLayer::new())
+                .layer(CorsLayer::permissive().max_age(Duration::from_hours(1))),
+        )
+        .layer(session_layer);
     let addr = format!("127.0.0.1:{}", http_port);
     let listener = tokio::net::TcpListener::bind(&addr)
         .await
