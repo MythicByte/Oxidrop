@@ -9,6 +9,7 @@ use std::{
     time::Duration,
 };
 
+use anyhow::Context;
 use clap::Parser;
 use hyper::StatusCode;
 use oxidrop_common::FirewallConfig;
@@ -39,6 +40,7 @@ use tracing::error;
 use tracing_subscriber::FmtSubscriber;
 
 use crate::{
+    db::Database,
     ebpf::EbpfProgramm,
     router::combined_router,
     state::FirewallState,
@@ -61,17 +63,16 @@ pub struct Opt {
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     let opt = Opt::parse();
+    let Opt { http_port, .. } = opt;
 
     let subscriber = FmtSubscriber::builder()
         .with_max_level(Level::INFO)
         .finish();
-    // set gloab default
     tracing::subscriber::set_global_default(subscriber)
-        .expect("Tracing Subscriber failed to setup");
+        .context("Tracing Subscriber failed to setup")?;
 
     info!("Application ist starting");
 
-    let Opt { http_port, .. } = opt;
     let mut ebpf_programm = EbpfProgramm::new()?;
     ebpf_programm.reboot(&FirewallConfig::default(), &opt)?;
     let (
@@ -87,11 +88,7 @@ async fn main() -> anyhow::Result<()> {
     let db = db::Database::new("sqlite://oxidrop.db").await?;
 
     let db_cloned = db.clone();
-    tokio::spawn(async move {
-        if let Err(e) = db_cloned.bootstrap_default_admin().await {
-            error!("Failed to bootstrap default admin: {}", e);
-        }
-    });
+    spawn_db_default_user(db_cloned);
 
     let state = FirewallState {
         db,
@@ -104,48 +101,8 @@ async fn main() -> anyhow::Result<()> {
         subnet_matching_v6: Arc::new(RwLock::new(subnet_matching_v6)),
     };
     let state_clone = state.clone();
+    spawn_cleanup_connection_map_after_10_minutes(state_clone);
     // Spawn the background cleanup task
-    tokio::spawn(async move {
-        const TIMEOUT_NS: u64 = 10 * 60 * 1_000_000_000; // 10 minutes
-        let mut interval = tokio::time::interval(tokio::time::Duration::from_secs(600));
-
-        loop {
-            interval.tick().await;
-            let current_bpf_time = get_bpf_ktime_ns();
-
-            // Clean up IPv4 allow list
-            {
-                let mut v4_map = state_clone.allow_list_v4.write().await;
-                let mut keys_to_remove = Vec::new();
-                for entry in v4_map.iter() {
-                    if let Ok((key, state_val)) = entry {
-                        if current_bpf_time.saturating_sub(state_val.last_seen) > TIMEOUT_NS {
-                            keys_to_remove.push(key);
-                        }
-                    }
-                }
-                for key in keys_to_remove {
-                    let _ = v4_map.remove(&key);
-                }
-            }
-
-            // Clean up IPv6 allow list
-            {
-                let mut v6_map = state_clone.allow_list_v6.write().await;
-                let mut v6_keys_to_remove = Vec::new();
-                for entry in v6_map.iter() {
-                    if let Ok((key, state_val)) = entry {
-                        if current_bpf_time.saturating_sub(state_val.last_seen) > TIMEOUT_NS {
-                            v6_keys_to_remove.push(key);
-                        }
-                    }
-                }
-                for key in v6_keys_to_remove {
-                    let _ = v6_map.remove(&key);
-                }
-            }
-        }
-    });
     let session_store = MemoryStore::default();
     let session_layer = SessionManagerLayer::new(session_store)
         .with_secure(cfg!(not(debug_assertions))) // secure in debug off
@@ -170,22 +127,73 @@ async fn main() -> anyhow::Result<()> {
     let addr = format!("127.0.0.1:{}", http_port);
     let listener = tokio::net::TcpListener::bind(&addr)
         .await
-        .expect("Listener for axum failed to setup");
+        .context("Listener for axum failed to setup")?;
     info!("Server running on port {http_port}");
 
     axum::serve(listener, app)
         .with_graceful_shutdown(async {
-            tokio::signal::ctrl_c()
-                .await
-                .expect("Failed to listen for ctrl-c");
-            info!("Ctrl-C received, starting graceful shutdown...");
+            if let Err(err) = tokio::signal::ctrl_c().await {
+                error!("Failed to listen for shutdown signal: {err}");
+            }
+            info!("Shutdown signal received, shutting down gracefully...");
         })
         .await
-        .expect("Axum failed");
+        .context("Axum serving failed")?;
 
     Ok(())
 }
 fn get_bpf_ktime_ns() -> u64 {
     let ts = clock_gettime(ClockId::Monotonic);
     (ts.tv_sec as u64) * 1_000_000_000 + (ts.tv_nsec as u64)
+}
+fn spawn_db_default_user(db: Database) {
+    tokio::spawn(async move {
+        if let Err(e) = db.bootstrap_default_admin().await {
+            error!("Failed to bootstrap default admin: {}", e);
+        }
+    });
+}
+/// cleanup old connection after 10 Minutes
+fn spawn_cleanup_connection_map_after_10_minutes(state: FirewallState) {
+    tokio::spawn(async move {
+        const TIMEOUT_NS: u64 = 10 * 60 * 1_000_000_000; // 10 minutes
+        let mut interval = tokio::time::interval(tokio::time::Duration::from_secs(600));
+
+        loop {
+            interval.tick().await;
+            let current_bpf_time = get_bpf_ktime_ns();
+
+            // Clean up IPv4 allow list
+            {
+                let mut v4_map = state.allow_list_v4.write().await;
+                let mut keys_to_remove = Vec::new();
+                for entry in v4_map.iter() {
+                    if let Ok((key, state_val)) = entry {
+                        if current_bpf_time.saturating_sub(state_val.last_seen) > TIMEOUT_NS {
+                            keys_to_remove.push(key);
+                        }
+                    }
+                }
+                for key in keys_to_remove {
+                    let _ = v4_map.remove(&key);
+                }
+            }
+
+            // Clean up IPv6 allow list
+            {
+                let mut v6_map = state.allow_list_v6.write().await;
+                let mut v6_keys_to_remove = Vec::new();
+                for entry in v6_map.iter() {
+                    if let Ok((key, state_val)) = entry {
+                        if current_bpf_time.saturating_sub(state_val.last_seen) > TIMEOUT_NS {
+                            v6_keys_to_remove.push(key);
+                        }
+                    }
+                }
+                for key in v6_keys_to_remove {
+                    let _ = v6_map.remove(&key);
+                }
+            }
+        }
+    });
 }

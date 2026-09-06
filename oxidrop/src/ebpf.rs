@@ -51,7 +51,13 @@ impl EbpfProgramm {
                     tokio::io::unix::AsyncFd::with_interest(logger, tokio::io::Interest::READABLE)?;
                 tokio::task::spawn(async move {
                     loop {
-                        let mut guard = logger.readable_mut().await.expect("eBPF guard failed");
+                        let mut guard = match logger.readable_mut().await {
+                            Ok(g) => g,
+                            Err(e) => {
+                                warn!("eBPF guard failed: {e}");
+                                continue;
+                            }
+                        };
                         guard.get_inner_mut().flush();
                         guard.clear_ready();
                     }
