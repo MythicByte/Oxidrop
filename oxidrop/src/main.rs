@@ -189,7 +189,9 @@ async fn session_store_build() -> anyhow::Result<SessionManagerLayer<RedisStore<
     let pool = Pool::new(Config::default(), None, None, None, 6)?;
 
     let _redis_conn = pool.connect();
-    pool.wait_for_connect().await?;
+    pool.wait_for_connect().await.context(
+        "could not connect to redis \nIs it started yet ? \nExecute: sudo systemctl start redis",
+    )?;
 
     // Spawn the background cleanup task
     let session_store = RedisStore::new(pool);
