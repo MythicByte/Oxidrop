@@ -10,6 +10,7 @@ use axum::{
         post,
     },
 };
+use axum_login::AuthSession;
 use aya::maps::{
     Array,
     HashMap,
@@ -34,7 +35,12 @@ use serde::{
 };
 use tokio::sync::RwLock;
 
-use crate::db::Database;
+use crate::db::{
+    ActionPermissions,
+    CallerContext,
+    Database,
+    RolesUser,
+};
 
 /// Firewall internal state
 #[derive(Clone)]
@@ -166,35 +172,49 @@ pub async fn get_config(State(state): State<FirewallState>) -> impl IntoResponse
 /// update firewall config
 pub async fn update_config(
     State(state): State<FirewallState>,
+    auth_session: AuthSession<Database>,
     Json(patch): Json<ConfigPatch>,
 ) -> impl IntoResponse {
-    if let Err(msg) = patch.validate() {
-        return (StatusCode::BAD_REQUEST, msg).into_response();
-    }
+    let user = match auth_session.user {
+        Some(u) => u,
+        None => return StatusCode::UNAUTHORIZED.into_response(),
+    };
 
-    let mut config = state.config.write().await;
-    let mut cfg = match config.get(&0, 0) {
-        Ok(cfg) => cfg,
-        Err(_) => {
+    let caller = CallerContext {
+        role: user.role,
+        permissions: user.permissions,
+    };
+    if caller.role == RolesUser::Admin && caller.permissions.contains(ActionPermissions::MODIFY) {
+        if let Err(msg) = patch.validate() {
+            return (StatusCode::BAD_REQUEST, msg).into_response();
+        }
+
+        let mut config = state.config.write().await;
+        let mut cfg = match config.get(&0, 0) {
+            Ok(cfg) => cfg,
+            Err(_) => {
+                return (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "CONFIG map not initialized",
+                )
+                    .into_response();
+            }
+        };
+
+        patch.apply(&mut cfg);
+
+        if config.set(0, &cfg, 0).is_err() {
             return (
                 StatusCode::INTERNAL_SERVER_ERROR,
-                "CONFIG map not initialized",
+                "Failed to update CONFIG map",
             )
                 .into_response();
         }
-    };
 
-    patch.apply(&mut cfg);
-
-    if config.set(0, &cfg, 0).is_err() {
-        return (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            "Failed to update CONFIG map",
-        )
-            .into_response();
+        Json(cfg).into_response()
+    } else {
+        StatusCode::UNAUTHORIZED.into_response()
     }
-
-    Json(cfg).into_response()
 }
 /// GET: Fetch all items in the IPv4 Allow List
 pub async fn get_allow_list_v4(State(state): State<FirewallState>) -> impl IntoResponse {
@@ -213,37 +233,67 @@ pub async fn get_allow_list_v4(State(state): State<FirewallState>) -> impl IntoR
 /// POST/PUT: Insert or update an item
 pub async fn modify_allow_list_v4(
     State(state): State<FirewallState>,
+    auth_session: AuthSession<Database>,
     Json(payload): Json<AllowListV4Update>,
 ) -> impl IntoResponse {
-    let mut map = state.allow_list_v4.write().await;
+    let user = match auth_session.user {
+        Some(u) => u,
+        None => return StatusCode::UNAUTHORIZED.into_response(),
+    };
 
-    if map.insert(&payload.key, &payload.state, 0).is_err() {
-        return (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            "Failed to insert into ALLOW_LIST_V4 map",
-        )
-            .into_response();
+    let caller = CallerContext {
+        role: user.role,
+        permissions: user.permissions,
+    };
+    if caller.role == RolesUser::Admin && caller.permissions.contains(ActionPermissions::MODIFY) {
+        let mut map = state.allow_list_v4.write().await;
+
+        if map.insert(&payload.key, &payload.state, 0).is_err() {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Failed to insert into ALLOW_LIST_V4 map",
+            )
+                .into_response();
+        }
+
+        StatusCode::OK.into_response()
+    } else {
+        StatusCode::UNAUTHORIZED.into_response()
     }
-
-    StatusCode::OK.into_response()
 }
 
 /// DELETE: Clear all entries in the list
-pub async fn clear_allow_list_v4(State(state): State<FirewallState>) -> impl IntoResponse {
-    let mut map = state.allow_list_v4.write().await;
+pub async fn clear_allow_list_v4(
+    State(state): State<FirewallState>,
+    auth_session: AuthSession<Database>,
+) -> impl IntoResponse {
+    let user = match auth_session.user {
+        Some(u) => u,
+        None => return StatusCode::UNAUTHORIZED.into_response(),
+    };
 
-    let mut keys_to_remove = Vec::with_capacity(4096);
-    for item in map.iter() {
-        if let Ok((key, _)) = item {
-            keys_to_remove.push(key);
+    let caller = CallerContext {
+        role: user.role,
+        permissions: user.permissions,
+    };
+    if caller.role == RolesUser::Admin && caller.permissions.contains(ActionPermissions::DELETE) {
+        let mut map = state.allow_list_v4.write().await;
+
+        let mut keys_to_remove = Vec::with_capacity(4096);
+        for item in map.iter() {
+            if let Ok((key, _)) = item {
+                keys_to_remove.push(key);
+            }
         }
-    }
 
-    for key in keys_to_remove {
-        let _ = map.remove(&key);
-    }
+        for key in keys_to_remove {
+            let _ = map.remove(&key);
+        }
 
-    StatusCode::OK.into_response()
+        StatusCode::OK.into_response()
+    } else {
+        StatusCode::UNAUTHORIZED.into_response()
+    }
 }
 
 /// GET: Fetch all items in the IPv4 Allow List
@@ -263,37 +313,67 @@ pub async fn get_allow_list_v6(State(state): State<FirewallState>) -> impl IntoR
 /// POST/PUT: Insert or update an item
 pub async fn modify_allow_list_v6(
     State(state): State<FirewallState>,
+    auth_session: AuthSession<Database>,
     Json(payload): Json<AllowListV6Update>,
 ) -> impl IntoResponse {
-    let mut map = state.allow_list_v6.write().await;
+    let user = match auth_session.user {
+        Some(u) => u,
+        None => return StatusCode::UNAUTHORIZED.into_response(),
+    };
 
-    if map.insert(&payload.key, &payload.state, 0).is_err() {
-        return (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            "Failed to insert into ALLOW_LIST_V6 map",
-        )
-            .into_response();
+    let caller = CallerContext {
+        role: user.role,
+        permissions: user.permissions,
+    };
+    if caller.role == RolesUser::Admin && caller.permissions.contains(ActionPermissions::MODIFY) {
+        let mut map = state.allow_list_v6.write().await;
+
+        if map.insert(&payload.key, &payload.state, 0).is_err() {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Failed to insert into ALLOW_LIST_V6 map",
+            )
+                .into_response();
+        }
+
+        StatusCode::OK.into_response()
+    } else {
+        StatusCode::UNAUTHORIZED.into_response()
     }
-
-    StatusCode::OK.into_response()
 }
 
 /// DELETE: Clear all entries in the list
-pub async fn clear_allow_list_v6(State(state): State<FirewallState>) -> impl IntoResponse {
-    let mut map = state.allow_list_v6.write().await;
+pub async fn clear_allow_list_v6(
+    State(state): State<FirewallState>,
+    auth_session: AuthSession<Database>,
+) -> impl IntoResponse {
+    let user = match auth_session.user {
+        Some(u) => u,
+        None => return StatusCode::UNAUTHORIZED.into_response(),
+    };
 
-    let mut keys_to_remove = Vec::with_capacity(4096);
-    for item in map.iter() {
-        if let Ok((key, _)) = item {
-            keys_to_remove.push(key);
+    let caller = CallerContext {
+        role: user.role,
+        permissions: user.permissions,
+    };
+    if caller.role == RolesUser::Admin && caller.permissions.contains(ActionPermissions::DELETE) {
+        let mut map = state.allow_list_v6.write().await;
+
+        let mut keys_to_remove = Vec::with_capacity(4096);
+        for item in map.iter() {
+            if let Ok((key, _)) = item {
+                keys_to_remove.push(key);
+            }
         }
-    }
 
-    for key in keys_to_remove {
-        let _ = map.remove(&key);
-    }
+        for key in keys_to_remove {
+            let _ = map.remove(&key);
+        }
 
-    StatusCode::OK.into_response()
+        StatusCode::OK.into_response()
+    } else {
+        StatusCode::UNAUTHORIZED.into_response()
+    }
 }
 
 pub async fn get_packet_counts_v4(State(state): State<FirewallState>) -> impl IntoResponse {
@@ -310,33 +390,63 @@ pub async fn get_packet_counts_v4(State(state): State<FirewallState>) -> impl In
 
 pub async fn modify_packet_counts_v4(
     State(state): State<FirewallState>,
+    auth_session: AuthSession<Database>,
     Json(payload): Json<PacketCountV4Update>,
 ) -> impl IntoResponse {
-    let mut map = state.packet_counts_v4.write().await;
+    let user = match auth_session.user {
+        Some(u) => u,
+        None => return StatusCode::UNAUTHORIZED.into_response(),
+    };
 
-    if map.insert(&payload.key, &payload.state, 0).is_err() {
-        return (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            "Failed to insert into PACKET_COUNTS_V4 map",
-        )
-            .into_response();
+    let caller = CallerContext {
+        role: user.role,
+        permissions: user.permissions,
+    };
+    if caller.role == RolesUser::Admin && caller.permissions.contains(ActionPermissions::MODIFY) {
+        let mut map = state.packet_counts_v4.write().await;
+
+        if map.insert(&payload.key, &payload.state, 0).is_err() {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Failed to insert into PACKET_COUNTS_V4 map",
+            )
+                .into_response();
+        }
+        StatusCode::OK.into_response()
+    } else {
+        StatusCode::UNAUTHORIZED.into_response()
     }
-    StatusCode::OK.into_response()
 }
 
-pub async fn clear_packet_counts_v4(State(state): State<FirewallState>) -> impl IntoResponse {
-    let mut map = state.packet_counts_v4.write().await;
+pub async fn clear_packet_counts_v4(
+    State(state): State<FirewallState>,
+    auth_session: AuthSession<Database>,
+) -> impl IntoResponse {
+    let user = match auth_session.user {
+        Some(u) => u,
+        None => return StatusCode::UNAUTHORIZED.into_response(),
+    };
 
-    let mut keys_to_remove = Vec::with_capacity(4096);
-    for item in map.iter() {
-        if let Ok((key, _)) = item {
-            keys_to_remove.push(key);
+    let caller = CallerContext {
+        role: user.role,
+        permissions: user.permissions,
+    };
+    if caller.role == RolesUser::Admin && caller.permissions.contains(ActionPermissions::DELETE) {
+        let mut map = state.packet_counts_v4.write().await;
+
+        let mut keys_to_remove = Vec::with_capacity(4096);
+        for item in map.iter() {
+            if let Ok((key, _)) = item {
+                keys_to_remove.push(key);
+            }
         }
+        for key in keys_to_remove {
+            let _ = map.remove(&key);
+        }
+        StatusCode::OK.into_response()
+    } else {
+        StatusCode::UNAUTHORIZED.into_response()
     }
-    for key in keys_to_remove {
-        let _ = map.remove(&key);
-    }
-    StatusCode::OK.into_response()
 }
 pub async fn get_packet_counts_v6(State(state): State<FirewallState>) -> impl IntoResponse {
     let map = state.packet_counts_v6.read().await;
@@ -352,132 +462,219 @@ pub async fn get_packet_counts_v6(State(state): State<FirewallState>) -> impl In
 
 pub async fn modify_packet_counts_v6(
     State(state): State<FirewallState>,
+    auth_session: AuthSession<Database>,
     Json(payload): Json<PacketCountV6Update>,
 ) -> impl IntoResponse {
-    let mut map = state.packet_counts_v6.write().await;
+    let user = match auth_session.user {
+        Some(u) => u,
+        None => return StatusCode::UNAUTHORIZED.into_response(),
+    };
 
-    if map.insert(&payload.key, &payload.state, 0).is_err() {
-        return (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            "Failed to insert into PACKET_COUNTS_V6 map",
-        )
-            .into_response();
+    let caller = CallerContext {
+        role: user.role,
+        permissions: user.permissions,
+    };
+    if caller.role == RolesUser::Admin && caller.permissions.contains(ActionPermissions::MODIFY) {
+        let mut map = state.packet_counts_v6.write().await;
+
+        if map.insert(&payload.key, &payload.state, 0).is_err() {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Failed to insert into PACKET_COUNTS_V6 map",
+            )
+                .into_response();
+        }
+        StatusCode::OK.into_response()
+    } else {
+        StatusCode::UNAUTHORIZED.into_response()
     }
-    StatusCode::OK.into_response()
 }
 
-pub async fn clear_packet_counts_v6(State(state): State<FirewallState>) -> impl IntoResponse {
-    let mut map = state.packet_counts_v6.write().await;
+pub async fn clear_packet_counts_v6(
+    State(state): State<FirewallState>,
 
-    let mut keys_to_remove = Vec::with_capacity(4096);
-    for item in map.iter() {
-        if let Ok((key, _)) = item {
-            keys_to_remove.push(key);
+    auth_session: AuthSession<Database>,
+) -> impl IntoResponse {
+    let user = match auth_session.user {
+        Some(u) => u,
+        None => return StatusCode::UNAUTHORIZED.into_response(),
+    };
+
+    let caller = CallerContext {
+        role: user.role,
+        permissions: user.permissions,
+    };
+    if caller.role == RolesUser::Admin && caller.permissions.contains(ActionPermissions::DELETE) {
+        let mut map = state.packet_counts_v6.write().await;
+
+        let mut keys_to_remove = Vec::with_capacity(4096);
+        for item in map.iter() {
+            if let Ok((key, _)) = item {
+                keys_to_remove.push(key);
+            }
         }
+        for key in keys_to_remove {
+            let _ = map.remove(&key);
+        }
+        StatusCode::OK.into_response()
+    } else {
+        StatusCode::UNAUTHORIZED.into_response()
     }
-    for key in keys_to_remove {
-        let _ = map.remove(&key);
-    }
-    StatusCode::OK.into_response()
 }
 pub async fn modify_subnet_matching_v4(
     State(state): State<FirewallState>,
+    auth_session: AuthSession<Database>,
     Json(payload): Json<SubnetMatchV4Update>,
 ) -> impl IntoResponse {
-    if payload.prefix_len > 32 {
-        return (
-            StatusCode::BAD_REQUEST,
-            "prefix_len must be between 0 and 32 for an IPv4 subnet",
-        )
-            .into_response();
-    }
+    let user = match auth_session.user {
+        Some(u) => u,
+        None => return StatusCode::UNAUTHORIZED.into_response(),
+    };
 
-    let mut map = state.subnet_matching_v4.write().await;
+    let caller = CallerContext {
+        role: user.role,
+        permissions: user.permissions,
+    };
+    if caller.role == RolesUser::Admin && caller.permissions.contains(ActionPermissions::MODIFY) {
+        if payload.prefix_len > 32 {
+            return (
+                StatusCode::BAD_REQUEST,
+                "prefix_len must be between 0 and 32 for an IPv4 subnet",
+            )
+                .into_response();
+        }
 
-    let key = Key::new(payload.prefix_len, payload.network);
-    if map.insert(&key, payload.action, 0).is_err() {
-        return (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            "Failed to insert into SUBNET_MATCHING_V4",
-        )
-            .into_response();
+        let mut map = state.subnet_matching_v4.write().await;
+
+        let key = Key::new(payload.prefix_len, payload.network);
+        if map.insert(&key, payload.action, 0).is_err() {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Failed to insert into SUBNET_MATCHING_V4",
+            )
+                .into_response();
+        }
+        StatusCode::OK.into_response()
+    } else {
+        StatusCode::UNAUTHORIZED.into_response()
     }
-    StatusCode::OK.into_response()
 }
 
 pub async fn remove_subnet_matching_v4(
     State(state): State<FirewallState>,
+    auth_session: AuthSession<Database>,
     Json(payload): Json<SubnetMatchV4Update>,
 ) -> impl IntoResponse {
-    if payload.prefix_len > 32 {
-        return (
-            StatusCode::BAD_REQUEST,
-            "prefix_len must be between 0 and 32 for an IPv4 subnet",
-        )
-            .into_response();
-    }
+    let user = match auth_session.user {
+        Some(u) => u,
+        None => return StatusCode::UNAUTHORIZED.into_response(),
+    };
 
-    let mut map = state.subnet_matching_v4.write().await;
+    let caller = CallerContext {
+        role: user.role,
+        permissions: user.permissions,
+    };
+    if caller.role == RolesUser::Admin && caller.permissions.contains(ActionPermissions::DELETE) {
+        if payload.prefix_len > 32 {
+            return (
+                StatusCode::BAD_REQUEST,
+                "prefix_len must be between 0 and 32 for an IPv4 subnet",
+            )
+                .into_response();
+        }
 
-    let key = Key::new(payload.prefix_len, payload.network);
-    if map.remove(&key).is_err() {
-        return (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            "Failed to remove from SUBNET_MATCHING_V4",
-        )
-            .into_response();
+        let mut map = state.subnet_matching_v4.write().await;
+
+        let key = Key::new(payload.prefix_len, payload.network);
+        if map.remove(&key).is_err() {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Failed to remove from SUBNET_MATCHING_V4",
+            )
+                .into_response();
+        }
+        StatusCode::OK.into_response()
+    } else {
+        StatusCode::UNAUTHORIZED.into_response()
     }
-    StatusCode::OK.into_response()
 }
 
 pub async fn modify_subnet_matching_v6(
     State(state): State<FirewallState>,
+    auth_session: AuthSession<Database>,
     Json(payload): Json<SubnetMatchV6Update>,
 ) -> impl IntoResponse {
-    if payload.prefix_len > 128 {
-        return (
-            StatusCode::BAD_REQUEST,
-            "prefix_len must be between 0 and 128 for an IPv6 subnet",
-        )
-            .into_response();
-    }
+    let user = match auth_session.user {
+        Some(u) => u,
+        None => return StatusCode::UNAUTHORIZED.into_response(),
+    };
 
-    let mut map = state.subnet_matching_v6.write().await;
+    let caller = CallerContext {
+        role: user.role,
+        permissions: user.permissions,
+    };
+    if caller.role == RolesUser::Admin && caller.permissions.contains(ActionPermissions::MODIFY) {
+        if payload.prefix_len > 128 {
+            return (
+                StatusCode::BAD_REQUEST,
+                "prefix_len must be between 0 and 128 for an IPv6 subnet",
+            )
+                .into_response();
+        }
 
-    let key = Key::new(payload.prefix_len, payload.network);
-    if map.insert(&key, payload.action, 0).is_err() {
-        return (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            "Failed to insert into SUBNET_MATCHING_V6",
-        )
-            .into_response();
+        let mut map = state.subnet_matching_v6.write().await;
+
+        let key = Key::new(payload.prefix_len, payload.network);
+        if map.insert(&key, payload.action, 0).is_err() {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Failed to insert into SUBNET_MATCHING_V6",
+            )
+                .into_response();
+        }
+        StatusCode::OK.into_response()
+    } else {
+        StatusCode::UNAUTHORIZED.into_response()
     }
-    StatusCode::OK.into_response()
 }
 
 pub async fn remove_subnet_matching_v6(
     State(state): State<FirewallState>,
+    auth_session: AuthSession<Database>,
     Json(payload): Json<SubnetMatchV6Update>,
 ) -> impl IntoResponse {
-    if payload.prefix_len > 128 {
-        return (
-            StatusCode::BAD_REQUEST,
-            "prefix_len must be between 0 and 128 for an IPv6 subnet",
-        )
-            .into_response();
-    }
+    let user = match auth_session.user {
+        Some(u) => u,
+        None => return StatusCode::UNAUTHORIZED.into_response(),
+    };
 
-    let mut map = state.subnet_matching_v6.write().await;
+    let caller = CallerContext {
+        role: user.role,
+        permissions: user.permissions,
+    };
+    if caller.role == RolesUser::Admin && caller.permissions.contains(ActionPermissions::DELETE) {
+        if payload.prefix_len > 128 {
+            return (
+                StatusCode::BAD_REQUEST,
+                "prefix_len must be between 0 and 128 for an IPv6 subnet",
+            )
+                .into_response();
+        }
 
-    let key = Key::new(payload.prefix_len, payload.network);
-    if map.remove(&key).is_err() {
-        return (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            "Failed to remove from SUBNET_MATCHING_V6",
-        )
-            .into_response();
+        let mut map = state.subnet_matching_v6.write().await;
+
+        let key = Key::new(payload.prefix_len, payload.network);
+        if map.remove(&key).is_err() {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Failed to remove from SUBNET_MATCHING_V6",
+            )
+                .into_response();
+        }
+        StatusCode::OK.into_response()
+    } else {
+        StatusCode::UNAUTHORIZED.into_response()
     }
-    StatusCode::OK.into_response()
 }
 /// Router for config
 pub fn config_router() -> Router<FirewallState> {
@@ -522,14 +719,16 @@ pub fn config_router() -> Router<FirewallState> {
 #[cfg(test)]
 mod tests {
     use axum::{
-        body::{
-            Body,
-            to_bytes,
-        },
+        body::Body,
         extract::Request,
     };
+    use axum_login::AuthManagerLayerBuilder;
     use hyper::Method;
     use tower::ServiceExt;
+    use tower_sessions::{
+        MemoryStore,
+        SessionManagerLayer,
+    };
 
     use super::*;
     const BPF_F_NO_PREALLOC: u32 = 1;
@@ -570,17 +769,100 @@ mod tests {
         }
     }
 
-    // Helper to make HTTP requests to the router
+    use crate::{
+        auth::AppUser,
+        db::{
+            ActionPermissions,
+            RolesUser,
+        },
+    };
+
     async fn make_request(
-        router: &axum::Router,
+        state: FirewallState,
         method: Method,
         path: &str,
         body_opt: Option<String>,
+        mock_user: Option<AppUser>,
     ) -> (StatusCode, String) {
         let has_body = body_opt.is_some();
+
+        let mut app_user = mock_user.unwrap_or_else(|| AppUser {
+            id: 0,
+            username: format!(
+                "test_admin_{}",
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap()
+                    .as_nanos()
+            ),
+            role: RolesUser::Admin,
+            permissions: ActionPermissions::MODIFY | ActionPermissions::DELETE,
+            password_hash: "dummy_hash".to_string(),
+        });
+
+        let role_str = match app_user.role {
+            RolesUser::Admin => "admin",
+            RolesUser::Viewer => "viewer",
+        };
+
+        let _ = sqlx::query!(
+        r#"INSERT INTO users (username, password_hash, role, action_permissions, password_must_be_changed, is_active)
+           VALUES (?, ?, ?, ?, 0, 1)
+           ON CONFLICT(username) DO UPDATE SET
+           role = excluded.role,
+           action_permissions = excluded.action_permissions"#,
+        app_user.username,
+        app_user.password_hash,
+        role_str,
+        app_user.permissions.bits()
+    )
+    .execute(&state.db.pool)
+    .await
+    .unwrap();
+
+        let real_id =
+            sqlx::query_scalar!("SELECT id FROM users WHERE username = ?", app_user.username)
+                .fetch_one(&state.db.pool)
+                .await
+                .unwrap();
+
+        app_user.id = real_id;
+
+        let store = MemoryStore::default();
+        let session_layer = SessionManagerLayer::new(store);
+        let auth_layer = AuthManagerLayerBuilder::new(state.db.clone(), session_layer).build();
+
+        let app = config_router()
+            .route(
+                "/__mock_login",
+                axum::routing::get({
+                    let app_user = app_user.clone();
+                    move |mut auth: axum_login::AuthSession<Database>| async move {
+                        auth.login(&app_user).await.unwrap();
+                        StatusCode::OK
+                    }
+                }),
+            )
+            .with_state(state.clone())
+            .layer(auth_layer);
+
+        let login_req = Request::builder()
+            .uri("/__mock_login")
+            .body(Body::empty())
+            .unwrap();
+        let login_res = app.clone().oneshot(login_req).await.unwrap();
+        let cookie = login_res
+            .headers()
+            .get(hyper::header::SET_COOKIE)
+            .expect("Failed to get SET_COOKIE header from mock login")
+            .to_str()
+            .unwrap()
+            .to_string();
+
         let mut req = Request::builder()
             .method(method)
             .uri(path)
+            .header(hyper::header::COOKIE, cookie)
             .body(Body::from(body_opt.unwrap_or_default()))
             .unwrap();
 
@@ -591,22 +873,20 @@ mod tests {
             );
         }
 
-        // Axum routers implement tower::Service. Use oneshot for tests.
-        let response = router.clone().oneshot(req).await.unwrap();
+        let response = app.oneshot(req).await.unwrap();
         let status = response.status();
+        let body_bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
 
-        let body_bytes = to_bytes(response.into_body(), usize::MAX).await.unwrap();
-        let body_str = String::from_utf8_lossy(&body_bytes);
-
-        (status, body_str.to_string())
+        (status, String::from_utf8_lossy(&body_bytes).to_string())
     }
 
     #[tokio::test]
     async fn test_config_endpoint() {
         let state = create_test_state().await;
-        let router = config_router().with_state(state.clone());
 
-        let (status, body) = make_request(&router, Method::GET, "/", None).await;
+        let (status, body) = make_request(state.clone(), Method::GET, "/", None, None).await;
         assert_eq!(status, StatusCode::OK);
 
         let config: FirewallConfig = serde_json::from_str(&body).unwrap();
@@ -624,10 +904,17 @@ mod tests {
             "ddos_activated": false
         });
 
-        let (status, _) = make_request(&router, Method::POST, "/", Some(patch.to_string())).await;
+        let (status, _) = make_request(
+            state.clone(),
+            Method::POST,
+            "/",
+            Some(patch.to_string()),
+            None,
+        )
+        .await;
         assert_eq!(status, StatusCode::OK);
 
-        let (status, body) = make_request(&router, Method::GET, "/", None).await;
+        let (status, body) = make_request(state.clone(), Method::GET, "/", None, None).await;
         assert_eq!(status, StatusCode::OK);
         let config: FirewallConfig = serde_json::from_str(&body).unwrap();
         assert_eq!(config.tcp_profile.rate_shift, 21);
@@ -638,7 +925,6 @@ mod tests {
     #[tokio::test]
     async fn test_allow_list_v4_lifecycle() {
         let state = create_test_state().await;
-        let router = config_router().with_state(state.clone());
 
         let entry = serde_json::json!({
             "key": {
@@ -655,25 +941,29 @@ mod tests {
         });
 
         let (status, _) = make_request(
-            &router,
+            state.clone(),
             Method::POST,
             "/allow_list/v4",
             Some(entry.to_string()),
+            None,
         )
         .await;
         assert_eq!(status, StatusCode::OK);
 
-        let (status, body) = make_request(&router, Method::GET, "/allow_list/v4", None).await;
+        let (status, body) =
+            make_request(state.clone(), Method::GET, "/allow_list/v4", None, None).await;
         assert_eq!(status, StatusCode::OK);
         let entries: Vec<(Ipv4Packet, AllowListState)> = serde_json::from_str(&body).unwrap();
         assert_eq!(entries.len(), 1);
         assert_eq!(entries[0].0.source_addr, 16843264);
         assert_eq!(entries[0].1.action, Action::Allow);
 
-        let (status, _) = make_request(&router, Method::DELETE, "/allow_list/v4", None).await;
+        let (status, _) =
+            make_request(state.clone(), Method::DELETE, "/allow_list/v4", None, None).await;
         assert_eq!(status, StatusCode::OK);
 
-        let (status, body) = make_request(&router, Method::GET, "/allow_list/v4", None).await;
+        let (status, body) =
+            make_request(state.clone(), Method::GET, "/allow_list/v4", None, None).await;
         assert_eq!(status, StatusCode::OK);
         let entries: Vec<(Ipv4Packet, AllowListState)> = serde_json::from_str(&body).unwrap();
         assert!(entries.is_empty());
@@ -682,7 +972,6 @@ mod tests {
     #[tokio::test]
     async fn test_subnet_matching_v4() {
         let state = create_test_state().await;
-        let router = config_router().with_state(state.clone());
 
         let rule = serde_json::json!({
             "network": 16843264,
@@ -690,8 +979,14 @@ mod tests {
             "action": "Allow"
         });
 
-        let (status, _) =
-            make_request(&router, Method::POST, "/subnet/v4", Some(rule.to_string())).await;
+        let (status, _) = make_request(
+            state.clone(),
+            Method::POST,
+            "/subnet/v4",
+            Some(rule.to_string()),
+            None,
+        )
+        .await;
         assert_eq!(status, StatusCode::OK);
 
         let key = aya::maps::lpm_trie::Key::new(24, 16843264);
@@ -702,10 +997,11 @@ mod tests {
         }
 
         let (status, _) = make_request(
-            &router,
+            state.clone(),
             Method::DELETE,
             "/subnet/v4",
             Some(rule.to_string()),
+            None,
         )
         .await;
         assert_eq!(status, StatusCode::OK);
@@ -717,7 +1013,6 @@ mod tests {
     #[tokio::test]
     async fn test_rate_limiting_state() {
         let state = create_test_state().await;
-        let router = config_router().with_state(state.clone());
 
         let entry = serde_json::json!({
             "key": {
@@ -734,24 +1029,34 @@ mod tests {
         });
 
         let (status, _) = make_request(
-            &router,
+            state.clone(),
             Method::POST,
             "/packet_counts/v4",
             Some(entry.to_string()),
+            None,
         )
         .await;
         assert_eq!(status, StatusCode::OK);
 
-        let (status, body) = make_request(&router, Method::GET, "/packet_counts/v4", None).await;
+        let (status, body) =
+            make_request(state.clone(), Method::GET, "/packet_counts/v4", None, None).await;
         assert_eq!(status, StatusCode::OK);
         let entries: Vec<(Ipv4Packet, TokenBucketState)> = serde_json::from_str(&body).unwrap();
         assert_eq!(entries.len(), 1);
         assert_eq!(entries[0].1.tokens, 100);
 
-        let (status, _) = make_request(&router, Method::DELETE, "/packet_counts/v4", None).await;
+        let (status, _) = make_request(
+            state.clone(),
+            Method::DELETE,
+            "/packet_counts/v4",
+            None,
+            None,
+        )
+        .await;
         assert_eq!(status, StatusCode::OK);
 
-        let (status, body) = make_request(&router, Method::GET, "/packet_counts/v4", None).await;
+        let (status, body) =
+            make_request(state.clone(), Method::GET, "/packet_counts/v4", None, None).await;
         assert_eq!(status, StatusCode::OK);
         let entries: Vec<(Ipv4Packet, TokenBucketState)> = serde_json::from_str(&body).unwrap();
         assert!(entries.is_empty());
@@ -760,10 +1065,15 @@ mod tests {
     #[tokio::test]
     async fn test_invalid_config_updates() {
         let state = create_test_state().await;
-        let router = config_router().with_state(state.clone());
 
-        let (status, _) =
-            make_request(&router, Method::POST, "/", Some("invalid json".to_string())).await;
+        let (status, _) = make_request(
+            state.clone(),
+            Method::POST,
+            "/",
+            Some("invalid json".to_string()),
+            None,
+        )
+        .await;
         assert_eq!(status, StatusCode::BAD_REQUEST);
 
         let patch = serde_json::json!({
@@ -773,7 +1083,14 @@ mod tests {
             }
         });
 
-        let (status, _) = make_request(&router, Method::POST, "/", Some(patch.to_string())).await;
+        let (status, _) = make_request(
+            state.clone(),
+            Method::POST,
+            "/",
+            Some(patch.to_string()),
+            None,
+        )
+        .await;
         assert_ne!(status, StatusCode::OK); // Expect invalid rate_shift to be rejected
 
         let rule = serde_json::json!({
@@ -782,8 +1099,14 @@ mod tests {
             "action": "Allow"
         });
 
-        let (status, _) =
-            make_request(&router, Method::POST, "/subnet/v4", Some(rule.to_string())).await;
+        let (status, _) = make_request(
+            state.clone(),
+            Method::POST,
+            "/subnet/v4",
+            Some(rule.to_string()),
+            None,
+        )
+        .await;
         assert_ne!(status, StatusCode::OK); // Expect invalid prefix_len (33) to be rejected
 
         let subnet_map = state.subnet_matching_v4.read().await;
@@ -794,11 +1117,10 @@ mod tests {
     #[tokio::test]
     async fn test_concurrent_config_updates() {
         let state = create_test_state().await;
-        let router = config_router().with_state(state.clone());
 
         let mut handles = Vec::new();
         for i in 0..10 {
-            let router_clone = router.clone();
+            let value = state.clone();
             let handle = tokio::spawn(async move {
                 let patch = serde_json::json!({
                     "tcp_profile": {
@@ -807,8 +1129,14 @@ mod tests {
                     }
                 });
 
-                let (status, _) =
-                    make_request(&router_clone, Method::POST, "/", Some(patch.to_string())).await;
+                let (status, _) = make_request(
+                    value.clone(),
+                    Method::POST,
+                    "/",
+                    Some(patch.to_string()),
+                    None,
+                )
+                .await;
                 status
             });
             handles.push(handle);
@@ -823,7 +1151,7 @@ mod tests {
             assert_eq!(result, StatusCode::OK);
         }
 
-        let (status, body) = make_request(&router, Method::GET, "/", None).await;
+        let (status, body) = make_request(state.clone(), Method::GET, "/", None, None).await;
         assert_eq!(status, StatusCode::OK);
         let config: FirewallConfig = serde_json::from_str(&body).unwrap();
 
@@ -837,7 +1165,6 @@ mod tests {
     #[tokio::test]
     async fn test_ipv6_allow_list() {
         let state = create_test_state().await;
-        let router = config_router().with_state(state.clone());
 
         let entry = serde_json::json!({
             "key": {
@@ -854,25 +1181,29 @@ mod tests {
         });
 
         let (status, _) = make_request(
-            &router,
+            state.clone(),
             Method::POST,
             "/allow_list/v6",
             Some(entry.to_string()),
+            None,
         )
         .await;
         assert_eq!(status, StatusCode::OK);
 
-        let (status, body) = make_request(&router, Method::GET, "/allow_list/v6", None).await;
+        let (status, body) =
+            make_request(state.clone(), Method::GET, "/allow_list/v6", None, None).await;
         assert_eq!(status, StatusCode::OK);
         let entries: Vec<(Ipv6Packet, AllowListState)> = serde_json::from_str(&body).unwrap();
         assert_eq!(entries.len(), 1);
         assert_eq!(entries[0].0.source_addr, [16843264, 0, 0, 1]);
         assert_eq!(entries[0].1.action, Action::Allow);
 
-        let (status, _) = make_request(&router, Method::DELETE, "/allow_list/v6", None).await;
+        let (status, _) =
+            make_request(state.clone(), Method::DELETE, "/allow_list/v6", None, None).await;
         assert_eq!(status, StatusCode::OK);
 
-        let (status, body) = make_request(&router, Method::GET, "/allow_list/v6", None).await;
+        let (status, body) =
+            make_request(state.clone(), Method::GET, "/allow_list/v6", None, None).await;
         assert_eq!(status, StatusCode::OK);
         let entries: Vec<(Ipv6Packet, AllowListState)> = serde_json::from_str(&body).unwrap();
         assert!(entries.is_empty());
@@ -881,7 +1212,6 @@ mod tests {
     #[tokio::test]
     async fn test_subnet_matching_v6() {
         let state = create_test_state().await;
-        let router = config_router().with_state(state.clone());
 
         let rule = serde_json::json!({
             "network": [16843264, 0, 0, 0],
@@ -889,8 +1219,14 @@ mod tests {
             "action": "Allow"
         });
 
-        let (status, _) =
-            make_request(&router, Method::POST, "/subnet/v6", Some(rule.to_string())).await;
+        let (status, _) = make_request(
+            state.clone(),
+            Method::POST,
+            "/subnet/v6",
+            Some(rule.to_string()),
+            None,
+        )
+        .await;
         assert_eq!(status, StatusCode::OK);
 
         let key = aya::maps::lpm_trie::Key::new(96, [16843264, 0, 0, 0]);
@@ -901,10 +1237,11 @@ mod tests {
         }
 
         let (status, _) = make_request(
-            &router,
+            state.clone(),
             Method::DELETE,
             "/subnet/v6",
             Some(rule.to_string()),
+            None,
         )
         .await;
         assert_eq!(status, StatusCode::OK);
@@ -916,7 +1253,6 @@ mod tests {
     #[tokio::test]
     async fn test_packet_counts_v6() {
         let state = create_test_state().await;
-        let router = config_router().with_state(state.clone());
 
         let entry = serde_json::json!({
             "key": {
@@ -933,24 +1269,34 @@ mod tests {
         });
 
         let (status, _) = make_request(
-            &router,
+            state.clone(),
             Method::POST,
             "/packet_counts/v6",
             Some(entry.to_string()),
+            None,
         )
         .await;
         assert_eq!(status, StatusCode::OK);
 
-        let (status, body) = make_request(&router, Method::GET, "/packet_counts/v6", None).await;
+        let (status, body) =
+            make_request(state.clone(), Method::GET, "/packet_counts/v6", None, None).await;
         assert_eq!(status, StatusCode::OK);
         let entries: Vec<(Ipv6Packet, TokenBucketState)> = serde_json::from_str(&body).unwrap();
         assert_eq!(entries.len(), 1);
         assert_eq!(entries[0].1.tokens, 100);
 
-        let (status, _) = make_request(&router, Method::DELETE, "/packet_counts/v6", None).await;
+        let (status, _) = make_request(
+            state.clone(),
+            Method::DELETE,
+            "/packet_counts/v6",
+            None,
+            None,
+        )
+        .await;
         assert_eq!(status, StatusCode::OK);
 
-        let (status, body) = make_request(&router, Method::GET, "/packet_counts/v6", None).await;
+        let (status, body) =
+            make_request(state.clone(), Method::GET, "/packet_counts/v6", None, None).await;
         assert_eq!(status, StatusCode::OK);
         let entries: Vec<(Ipv6Packet, TokenBucketState)> = serde_json::from_str(&body).unwrap();
         assert!(entries.is_empty());
@@ -959,7 +1305,6 @@ mod tests {
     #[tokio::test]
     async fn test_boundary_conditions() {
         let state = create_test_state().await;
-        let router = config_router().with_state(state.clone());
 
         let rule = serde_json::json!({
             "network": 4294967295_u32,
@@ -967,8 +1312,14 @@ mod tests {
             "action": "Deny"
         });
 
-        let (status, _) =
-            make_request(&router, Method::POST, "/subnet/v4", Some(rule.to_string())).await;
+        let (status, _) = make_request(
+            state.clone(),
+            Method::POST,
+            "/subnet/v4",
+            Some(rule.to_string()),
+            None,
+        )
+        .await;
         assert_eq!(status, StatusCode::OK);
 
         {
@@ -984,8 +1335,14 @@ mod tests {
             "action": "Deny"
         });
 
-        let (status, _) =
-            make_request(&router, Method::POST, "/subnet/v6", Some(rule.to_string())).await;
+        let (status, _) = make_request(
+            state.clone(),
+            Method::POST,
+            "/subnet/v6",
+            Some(rule.to_string()),
+            None,
+        )
+        .await;
         assert_eq!(status, StatusCode::OK);
 
         let subnet_map = state.subnet_matching_v6.read().await;
@@ -997,25 +1354,39 @@ mod tests {
     #[tokio::test]
     async fn test_empty_operations() {
         let state = create_test_state().await;
-        let router = config_router().with_state(state.clone());
 
-        let (status, _) = make_request(&router, Method::DELETE, "/allow_list/v4", None).await;
+        let (status, _) =
+            make_request(state.clone(), Method::DELETE, "/allow_list/v4", None, None).await;
         assert_eq!(status, StatusCode::OK);
 
-        let (status, _) = make_request(&router, Method::DELETE, "/packet_counts/v4", None).await;
+        let (status, _) = make_request(
+            state.clone(),
+            Method::DELETE,
+            "/packet_counts/v4",
+            None,
+            None,
+        )
+        .await;
         assert_eq!(status, StatusCode::OK);
 
-        let (status, _) = make_request(&router, Method::DELETE, "/allow_list/v6", None).await;
+        let (status, _) =
+            make_request(state.clone(), Method::DELETE, "/allow_list/v6", None, None).await;
         assert_eq!(status, StatusCode::OK);
 
-        let (status, _) = make_request(&router, Method::DELETE, "/packet_counts/v6", None).await;
+        let (status, _) = make_request(
+            state.clone(),
+            Method::DELETE,
+            "/packet_counts/v6",
+            None,
+            None,
+        )
+        .await;
         assert_eq!(status, StatusCode::OK);
     }
 
     #[tokio::test]
     async fn test_config_persistence() {
         let state = create_test_state().await;
-        let router = config_router().with_state(state.clone());
 
         let patch = serde_json::json!({
             "tcp_profile": {
@@ -1025,11 +1396,18 @@ mod tests {
             "ddos_activated": false
         });
 
-        let (status, _) = make_request(&router, Method::POST, "/", Some(patch.to_string())).await;
+        let (status, _) = make_request(
+            state.clone(),
+            Method::POST,
+            "/",
+            Some(patch.to_string()),
+            None,
+        )
+        .await;
         assert_eq!(status, StatusCode::OK);
 
         for _ in 0..5 {
-            let (status, body) = make_request(&router, Method::GET, "/", None).await;
+            let (status, body) = make_request(state.clone(), Method::GET, "/", None, None).await;
             assert_eq!(status, StatusCode::OK);
             let config: FirewallConfig = serde_json::from_str(&body).unwrap();
             assert_eq!(config.tcp_profile.rate_shift, 21);
