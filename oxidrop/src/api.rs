@@ -7,6 +7,7 @@ use axum_login::AuthSession;
 use hyper::StatusCode;
 use serde::Deserialize;
 use tracing::error;
+use utoipa::ToSchema;
 
 use crate::{
     db::{
@@ -19,29 +20,31 @@ use crate::{
     state::FirewallState,
 };
 
-#[derive(Deserialize)]
+#[derive(Deserialize, ToSchema)]
 pub struct CreateUserReq {
     pub username: String,
     pub password: String,
     pub role: RolesUser,
+    #[schema(value_type = u8)]
     pub permissions: ActionPermissions,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, ToSchema)]
 pub struct ModifyUserReq {
     pub target_username: String,
     pub role: RolesUser,
+    #[schema(value_type = u8)]
     pub permissions: ActionPermissions,
     pub is_active: i64,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, ToSchema)]
 pub struct RenameUserReq {
     pub current_username: String,
     pub new_username: String,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, ToSchema)]
 pub struct DeleteUserReq {
     pub target_username: String,
 }
@@ -64,6 +67,20 @@ fn map_user_error(err: UserError) -> StatusCode {
     }
 }
 
+#[utoipa::path(
+    post,
+    path = "/api/v1/users/create_user",
+    request_body = CreateUserReq,
+    responses(
+        (status = 201, description = "User created successfully"),
+        (status = 401, description = "Unauthorized"),
+        (status = 403, description = "Forbidden"),
+        (status = 409, description = "User already exists")
+    ),
+    security(
+        ("cookie_auth" = [])
+    )
+)]
 pub async fn create_user_endpoint(
     State(state): State<FirewallState>,
     auth_session: AuthSession<Database>,
@@ -95,6 +112,13 @@ pub async fn create_user_endpoint(
     }
 }
 
+#[utoipa::path(
+    put,
+    path = "/api/v1/users/modify_user",
+    request_body = ModifyUserReq,
+    responses((status = 200, description = "User modified"), (status = 401, description = "Unauthorized")),
+    security(("cookie_auth" = []))
+)]
 pub async fn modify_user_endpoint(
     State(state): State<FirewallState>,
     auth_session: AuthSession<Database>,
@@ -126,6 +150,13 @@ pub async fn modify_user_endpoint(
     }
 }
 
+#[utoipa::path(
+    patch,
+    path = "/api/v1/users/rename_user",
+    request_body = RenameUserReq,
+    responses((status = 200, description = "User renamed"), (status = 401, description = "Unauthorized")),
+    security(("cookie_auth" = []))
+)]
 pub async fn rename_user_endpoint(
     State(state): State<FirewallState>,
     auth_session: AuthSession<Database>,
@@ -151,6 +182,13 @@ pub async fn rename_user_endpoint(
     }
 }
 
+#[utoipa::path(
+    delete,
+    path = "/api/v1/users/delete_user",
+    request_body = DeleteUserReq,
+    responses((status = 204, description = "User deleted"), (status = 401, description = "Unauthorized")),
+    security(("cookie_auth" = []))
+)]
 pub async fn delete_user_endpoint(
     State(state): State<FirewallState>,
     auth_session: AuthSession<Database>,

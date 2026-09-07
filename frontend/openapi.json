@@ -1,0 +1,1135 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Oxidrop Firewall API",
+    "description": "Core API for the Oxidrop firewall system",
+    "license": {
+      "name": "GPL-2.0-only",
+      "identifier": "GPL-2.0-only"
+    },
+    "version": "1.0.0"
+  },
+  "paths": {
+    "/api/v1/config": {
+      "get": {
+        "tags": [
+          "crate::state"
+        ],
+        "summary": "get config from the firewall",
+        "operationId": "get_config",
+        "responses": {
+          "200": {
+            "description": "Get current firewall configuration"
+          }
+        },
+        "security": [
+          {
+            "cookie_auth": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "crate::state"
+        ],
+        "summary": "update firewall config",
+        "operationId": "update_config",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConfigPatch"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Config updated successfully"
+          },
+          "400": {
+            "description": "Bad Request"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "500": {
+            "description": "Internal Server Error"
+          }
+        },
+        "security": [
+          {
+            "cookie_auth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/config/allow_list/v4": {
+      "get": {
+        "tags": [
+          "crate::state"
+        ],
+        "summary": "GET: Fetch all items in the IPv4 Allow List",
+        "operationId": "get_allow_list_v4",
+        "responses": {
+          "200": {
+            "description": "Get all items in the IPv4 Allow List"
+          }
+        },
+        "security": [
+          {
+            "cookie_auth": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "crate::state"
+        ],
+        "summary": "POST/PUT: Insert or update an item",
+        "operationId": "modify_allow_list_v4",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AllowListV4Update"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Item inserted or updated"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        },
+        "security": [
+          {
+            "cookie_auth": []
+          }
+        ]
+      },
+      "delete": {
+        "tags": [
+          "crate::state"
+        ],
+        "summary": "DELETE: Clear all entries in the list",
+        "operationId": "clear_allow_list_v4",
+        "responses": {
+          "200": {
+            "description": "All entries cleared"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        },
+        "security": [
+          {
+            "cookie_auth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/config/allow_list/v6": {
+      "get": {
+        "tags": [
+          "crate::state"
+        ],
+        "summary": "GET: Fetch all items in the IPv4 Allow List",
+        "operationId": "get_allow_list_v6",
+        "responses": {
+          "200": {
+            "description": "Get all items in the IPv6 Allow List"
+          }
+        },
+        "security": [
+          {
+            "cookie_auth": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "crate::state"
+        ],
+        "summary": "POST/PUT: Insert or update an item",
+        "operationId": "modify_allow_list_v6",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AllowListV6Update"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Item inserted or updated"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        },
+        "security": [
+          {
+            "cookie_auth": []
+          }
+        ]
+      },
+      "delete": {
+        "tags": [
+          "crate::state"
+        ],
+        "summary": "DELETE: Clear all entries in the list",
+        "operationId": "clear_allow_list_v6",
+        "responses": {
+          "200": {
+            "description": "All entries cleared"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        },
+        "security": [
+          {
+            "cookie_auth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/config/packet_counts/v4": {
+      "get": {
+        "tags": [
+          "crate::state"
+        ],
+        "operationId": "get_packet_counts_v4",
+        "responses": {
+          "200": {
+            "description": "Get IPv4 packet counts"
+          }
+        },
+        "security": [
+          {
+            "cookie_auth": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "crate::state"
+        ],
+        "operationId": "modify_packet_counts_v4",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PacketCountV4Update"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Updated IPv4 packet count"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        },
+        "security": [
+          {
+            "cookie_auth": []
+          }
+        ]
+      },
+      "delete": {
+        "tags": [
+          "crate::state"
+        ],
+        "operationId": "clear_packet_counts_v4",
+        "responses": {
+          "200": {
+            "description": "Cleared IPv4 packet counts"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        },
+        "security": [
+          {
+            "cookie_auth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/config/packet_counts/v6": {
+      "get": {
+        "tags": [
+          "crate::state"
+        ],
+        "operationId": "get_packet_counts_v6",
+        "responses": {
+          "200": {
+            "description": "Get IPv6 packet counts"
+          }
+        },
+        "security": [
+          {
+            "cookie_auth": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "crate::state"
+        ],
+        "operationId": "modify_packet_counts_v6",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PacketCountV6Update"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Updated IPv6 packet count"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        },
+        "security": [
+          {
+            "cookie_auth": []
+          }
+        ]
+      },
+      "delete": {
+        "tags": [
+          "crate::state"
+        ],
+        "operationId": "clear_packet_counts_v6",
+        "responses": {
+          "200": {
+            "description": "Cleared IPv6 packet counts"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        },
+        "security": [
+          {
+            "cookie_auth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/config/subnet/v4": {
+      "post": {
+        "tags": [
+          "crate::state"
+        ],
+        "operationId": "modify_subnet_matching_v4",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SubnetMatchV4Update"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Added/Updated IPv4 subnet rule"
+          },
+          "400": {
+            "description": "Invalid prefix"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        },
+        "security": [
+          {
+            "cookie_auth": []
+          }
+        ]
+      },
+      "delete": {
+        "tags": [
+          "crate::state"
+        ],
+        "operationId": "remove_subnet_matching_v4",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SubnetMatchV4Update"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Removed IPv4 subnet rule"
+          },
+          "400": {
+            "description": "Invalid prefix"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        },
+        "security": [
+          {
+            "cookie_auth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/config/subnet/v6": {
+      "post": {
+        "tags": [
+          "crate::state"
+        ],
+        "operationId": "modify_subnet_matching_v6",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SubnetMatchV6Update"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Added/Updated IPv6 subnet rule"
+          },
+          "400": {
+            "description": "Invalid prefix"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        },
+        "security": [
+          {
+            "cookie_auth": []
+          }
+        ]
+      },
+      "delete": {
+        "tags": [
+          "crate::state"
+        ],
+        "operationId": "remove_subnet_matching_v6",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SubnetMatchV6Update"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Removed IPv6 subnet rule"
+          },
+          "400": {
+            "description": "Invalid prefix"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        },
+        "security": [
+          {
+            "cookie_auth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/login": {
+      "post": {
+        "tags": [
+          "crate::auth"
+        ],
+        "operationId": "login",
+        "requestBody": {
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/Credentials"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "303": {
+            "description": "Login successful"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
+    "/api/v1/logout": {
+      "get": {
+        "tags": [
+          "crate::auth"
+        ],
+        "operationId": "logout",
+        "responses": {
+          "303": {
+            "description": "Logout successful"
+          }
+        },
+        "security": [
+          {
+            "cookie_auth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/users/create_user": {
+      "post": {
+        "tags": [
+          "crate::api"
+        ],
+        "operationId": "create_user_endpoint",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateUserReq"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "User created successfully"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden"
+          },
+          "409": {
+            "description": "User already exists"
+          }
+        },
+        "security": [
+          {
+            "cookie_auth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/users/delete_user": {
+      "delete": {
+        "tags": [
+          "crate::api"
+        ],
+        "operationId": "delete_user_endpoint",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DeleteUserReq"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "User deleted"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        },
+        "security": [
+          {
+            "cookie_auth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/users/modify_user": {
+      "put": {
+        "tags": [
+          "crate::api"
+        ],
+        "operationId": "modify_user_endpoint",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ModifyUserReq"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "User modified"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        },
+        "security": [
+          {
+            "cookie_auth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/users/rename_user": {
+      "patch": {
+        "tags": [
+          "crate::api"
+        ],
+        "operationId": "rename_user_endpoint",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RenameUserReq"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "User renamed"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        },
+        "security": [
+          {
+            "cookie_auth": []
+          }
+        ]
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "Action": {
+        "type": "string",
+        "description": "What to do with a list",
+        "enum": [
+          "Allow",
+          "Deny"
+        ]
+      },
+      "AllowListState": {
+        "type": "object",
+        "required": [
+          "action",
+          "last_seen"
+        ],
+        "properties": {
+          "action": {
+            "$ref": "#/components/schemas/Action"
+          },
+          "last_seen": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          }
+        }
+      },
+      "AllowListV4Update": {
+        "type": "object",
+        "required": [
+          "key",
+          "state"
+        ],
+        "properties": {
+          "key": {
+            "$ref": "#/components/schemas/Ipv4Packet"
+          },
+          "state": {
+            "$ref": "#/components/schemas/AllowListState"
+          }
+        }
+      },
+      "AllowListV6Update": {
+        "type": "object",
+        "required": [
+          "key",
+          "state"
+        ],
+        "properties": {
+          "key": {
+            "$ref": "#/components/schemas/Ipv6Packet"
+          },
+          "state": {
+            "$ref": "#/components/schemas/AllowListState"
+          }
+        }
+      },
+      "AppUser": {
+        "type": "object",
+        "required": [
+          "id",
+          "username",
+          "role",
+          "permissions",
+          "password_hash"
+        ],
+        "properties": {
+          "id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "password_hash": {
+            "type": "string"
+          },
+          "permissions": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "role": {
+            "$ref": "#/components/schemas/RolesUser"
+          },
+          "username": {
+            "type": "string"
+          }
+        }
+      },
+      "ConfigPatch": {
+        "type": "object",
+        "properties": {
+          "ddos_activated": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "default_profile": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/RateProfile"
+              }
+            ]
+          },
+          "icmp_profile": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/RateProfile"
+              }
+            ]
+          },
+          "incoming_ethernet_adapter": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "minimum": 0
+          },
+          "output_ethernet_adapter": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "minimum": 0
+          },
+          "protcol_allowed": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "minimum": 0
+          },
+          "tcp_profile": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/RateProfile"
+              }
+            ]
+          },
+          "udp_profile": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/RateProfile"
+              }
+            ]
+          }
+        }
+      },
+      "CreateUserReq": {
+        "type": "object",
+        "required": [
+          "username",
+          "password",
+          "role",
+          "permissions"
+        ],
+        "properties": {
+          "password": {
+            "type": "string"
+          },
+          "permissions": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "role": {
+            "$ref": "#/components/schemas/RolesUser"
+          },
+          "username": {
+            "type": "string"
+          }
+        }
+      },
+      "Credentials": {
+        "type": "object",
+        "required": [
+          "username",
+          "password"
+        ],
+        "properties": {
+          "password": {
+            "type": "string"
+          },
+          "username": {
+            "type": "string"
+          }
+        }
+      },
+      "DeleteUserReq": {
+        "type": "object",
+        "required": [
+          "target_username"
+        ],
+        "properties": {
+          "target_username": {
+            "type": "string"
+          }
+        }
+      },
+      "Ipv4Packet": {
+        "type": "object",
+        "description": "Tightly packed 5-Tuple for IPv4 state tracking\nTotal size: 16 bytes (Strictly aligned)",
+        "required": [
+          "source_addr",
+          "destination_addr",
+          "source_port",
+          "destination_port",
+          "protocol"
+        ],
+        "properties": {
+          "_pad": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "_pad2": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "destination_addr": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "destination_port": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "protocol": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "source_addr": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "source_port": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          }
+        }
+      },
+      "Ipv6Packet": {
+        "type": "object",
+        "description": "Tightly packed 5-Tuple for IPv6 state tracking\nTotal size: 40 bytes (Strictly aligned)",
+        "required": [
+          "source_addr",
+          "destination_addr",
+          "source_port",
+          "destination_port",
+          "protocol"
+        ],
+        "properties": {
+          "_pad": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
+            }
+          },
+          "destination_addr": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
+            }
+          },
+          "destination_port": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "protocol": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "source_addr": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
+            }
+          },
+          "source_port": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          }
+        }
+      },
+      "ModifyUserReq": {
+        "type": "object",
+        "required": [
+          "target_username",
+          "role",
+          "permissions",
+          "is_active"
+        ],
+        "properties": {
+          "is_active": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "permissions": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "role": {
+            "$ref": "#/components/schemas/RolesUser"
+          },
+          "target_username": {
+            "type": "string"
+          }
+        }
+      },
+      "PacketCountV4Update": {
+        "type": "object",
+        "required": [
+          "key",
+          "state"
+        ],
+        "properties": {
+          "key": {
+            "$ref": "#/components/schemas/Ipv4Packet"
+          },
+          "state": {
+            "$ref": "#/components/schemas/TokenBucketState"
+          }
+        }
+      },
+      "PacketCountV6Update": {
+        "type": "object",
+        "required": [
+          "key",
+          "state"
+        ],
+        "properties": {
+          "key": {
+            "$ref": "#/components/schemas/Ipv6Packet"
+          },
+          "state": {
+            "$ref": "#/components/schemas/TokenBucketState"
+          }
+        }
+      },
+      "Permission": {
+        "type": "string",
+        "enum": [
+          "Create",
+          "Modify",
+          "Delete"
+        ]
+      },
+      "RateProfile": {
+        "type": "object",
+        "description": "Bucket State for Rate Limiting",
+        "required": [
+          "rate_shift",
+          "burst"
+        ],
+        "properties": {
+          "burst": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "rate_shift": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          }
+        }
+      },
+      "RenameUserReq": {
+        "type": "object",
+        "required": [
+          "current_username",
+          "new_username"
+        ],
+        "properties": {
+          "current_username": {
+            "type": "string"
+          },
+          "new_username": {
+            "type": "string"
+          }
+        }
+      },
+      "RolesUser": {
+        "type": "string",
+        "enum": [
+          "Viewer",
+          "Admin"
+        ]
+      },
+      "SubnetMatchV4Update": {
+        "type": "object",
+        "required": [
+          "network",
+          "prefix_len",
+          "action"
+        ],
+        "properties": {
+          "action": {
+            "$ref": "#/components/schemas/Action"
+          },
+          "network": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "prefix_len": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          }
+        }
+      },
+      "SubnetMatchV6Update": {
+        "type": "object",
+        "required": [
+          "network",
+          "prefix_len",
+          "action"
+        ],
+        "properties": {
+          "action": {
+            "$ref": "#/components/schemas/Action"
+          },
+          "network": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
+            }
+          },
+          "prefix_len": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          }
+        }
+      },
+      "TokenBucketState": {
+        "type": "object",
+        "description": "The ddos protection bucket",
+        "required": [
+          "tokens",
+          "last_update"
+        ],
+        "properties": {
+          "last_update": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "tokens": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          }
+        }
+      }
+    }
+  }
+}

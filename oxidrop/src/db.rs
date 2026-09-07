@@ -19,9 +19,10 @@ use sqlx::{
 };
 use thiserror::Error;
 use tracing::warn;
+use utoipa::ToSchema;
 
 bitflags! {
-    #[derive(Debug, Clone, Copy, PartialEq, Eq,Serialize,Deserialize)]
+    #[derive(Debug, Clone, Copy, PartialEq, Eq,Serialize,Deserialize,)]
     pub struct ActionPermissions: u8 {
         const NONE   = 0;
         const CREATE = 1; // 001
@@ -29,7 +30,7 @@ bitflags! {
         const DELETE = 4; // 100
     }
 }
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, ToSchema)]
 pub enum RolesUser {
     Viewer = 0,
     Admin = 1,

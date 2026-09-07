@@ -1,4 +1,5 @@
-#![no_std]
+// not_std active normal disable with feature
+#![cfg_attr(not(feature = "user"), no_std)]
 
 #[cfg(feature = "user")]
 use aya::Pod;
@@ -7,17 +8,19 @@ use network_types::eth::EtherType;
 use serde::Deserialize;
 #[cfg(feature = "user")]
 use serde::Serialize;
+#[cfg(feature = "user")]
+use utoipa::ToSchema;
 /// What to do with a list
 #[repr(C)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
-#[cfg_attr(feature = "user", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "user", derive(Serialize, Deserialize, ToSchema))]
 pub enum Action {
     Allow = 0,
     Deny = 1,
 }
 #[repr(C)]
 #[derive(Clone, Copy, Debug)]
-#[cfg_attr(feature = "user", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "user", derive(Serialize, Deserialize, ToSchema))]
 pub struct AllowListState {
     pub action: Action,
     pub last_seen: u64,
@@ -26,7 +29,7 @@ pub struct AllowListState {
 /// which directions of ethenet adapter i need to check
 #[repr(C)]
 #[derive(Clone, Copy, Debug)]
-#[cfg_attr(feature = "user", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "user", derive(Serialize, Deserialize, ToSchema))]
 pub enum TraficDirection {
     Incoming = 0,
     Outgoing = 1,
@@ -34,7 +37,7 @@ pub enum TraficDirection {
 /// The ddos protection bucket
 #[repr(C)]
 #[derive(Clone, Copy, Debug)]
-#[cfg_attr(feature = "user", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "user", derive(Serialize, Deserialize, ToSchema))]
 pub struct TokenBucketState {
     pub tokens: u64,
     pub last_update: u64,
@@ -42,7 +45,7 @@ pub struct TokenBucketState {
 /// Erros for the firewall
 #[repr(C)]
 #[derive(Clone, Copy, Debug)]
-#[cfg_attr(feature = "user", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "user", derive(Serialize, Deserialize, ToSchema))]
 pub enum FirewallError {
     /// The packet is too short, and reading the header would go out of bounds.
     OutOfBounds = 0,
@@ -70,7 +73,7 @@ bitflags::bitflags! {
 /// Bucket State for Rate Limiting
 #[repr(C)]
 #[derive(Clone, Copy, Debug)]
-#[cfg_attr(feature = "user", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "user", derive(Serialize, Deserialize, ToSchema))]
 pub struct RateProfile {
     pub rate_shift: u64,
     pub burst: u64,
@@ -78,12 +81,13 @@ pub struct RateProfile {
 // Configuration provided by Userspace
 #[repr(C)]
 #[derive(Clone, Copy, Debug)]
-#[cfg_attr(feature = "user", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "user", derive(Serialize, Deserialize, ToSchema))]
 pub struct FirewallConfig {
     pub tcp_profile: RateProfile,
     pub udp_profile: RateProfile,
     pub icmp_profile: RateProfile,
     pub default_profile: RateProfile,
+    #[cfg_attr(feature = "user", schema(value_type = u8))]
     pub protocol_allowed: ActivaterEtherTypes,
     /// if ddos protection is on
     pub ddos_activated: bool,
@@ -97,7 +101,7 @@ pub struct FirewallConfig {
 /// Total size: 16 bytes (Strictly aligned)
 #[repr(C)]
 #[derive(Clone, Copy, Debug)]
-#[cfg_attr(feature = "user", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "user", derive(Serialize, Deserialize, ToSchema))]
 pub struct Ipv4Packet {
     pub source_addr: u32,      // 4 bytes (Source IP)
     pub destination_addr: u32, // 4 bytes (Destination IP)
@@ -135,7 +139,7 @@ impl Ipv4Packet {
 /// Total size: 40 bytes (Strictly aligned)
 #[repr(C)]
 #[derive(Clone, Copy, Debug)]
-#[cfg_attr(feature = "user", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "user", derive(Serialize, Deserialize, ToSchema))]
 pub struct Ipv6Packet {
     pub source_addr: [u32; 4],      // 16 bytes
     pub destination_addr: [u32; 4], // 16 bytes

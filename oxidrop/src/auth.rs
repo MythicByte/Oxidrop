@@ -36,6 +36,7 @@ use serde::{
     Deserialize,
     Serialize,
 };
+use utoipa::ToSchema;
 
 use crate::db::{
     ActionPermissions,
@@ -43,17 +44,18 @@ use crate::db::{
     RolesUser,
     UserError,
 };
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, ToSchema)]
 pub enum Permission {
     Create,
     Modify,
     Delete,
 }
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct AppUser {
     pub id: i64,
     pub username: String,
     pub role: RolesUser,
+    #[schema(value_type = u8)]
     pub permissions: ActionPermissions,
     pub password_hash: String,
 }
@@ -68,9 +70,10 @@ impl AuthUser for AppUser {
     }
 }
 
-#[derive(Clone, Deserialize)]
+#[derive(Clone, Deserialize, ToSchema)]
 pub struct Credentials {
     pub username: String,
+    #[schema(value_type = String)]
     pub password: SecretString,
 }
 
@@ -198,6 +201,12 @@ impl AuthzBackend for Database {
 }
 type AuthSession = axum_login::AuthSession<Database>;
 
+#[utoipa::path(
+    post,
+    path = "/api/v1/login",
+    request_body(content = Credentials, content_type = "application/x-www-form-urlencoded"),
+    responses((status = 303, description = "Login successful"), (status = 401, description = "Unauthorized"))
+)]
 pub async fn login(
     mut auth_session: AuthSession,
     Form(creds): Form<Credentials>,
@@ -214,6 +223,12 @@ pub async fn login(
 
     Redirect::to("/protected").into_response()
 }
+#[utoipa::path(
+    get,
+    path = "/api/v1/logout",
+    responses((status = 303, description = "Logout successful")),
+    security(("cookie_auth" = []))
+)]
 pub async fn logout(mut auth_session: AuthSession) -> impl IntoResponse {
     match auth_session.logout().await {
         Ok(_) => Redirect::to("/login").into_response(),

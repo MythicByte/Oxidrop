@@ -6,6 +6,8 @@ edition.workspace = true
 license.workspace = true
 
 [dependencies]
+utoipa-axum = "0.2"
+utoipa = { version = "5.5.0", features = ["axum_extras"] }
 secrecy = { version = "0.10.3", features = ["serde"] }
 axum-login = "0.18.0"
 tower-sessions-redis-store = "0.16.0"

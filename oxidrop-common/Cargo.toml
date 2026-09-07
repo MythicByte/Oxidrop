@@ -7,9 +7,10 @@ license.workspace = true
 
 [features]
 default = []
-user = ["aya","serde","bitflags/serde"]
+user = ["aya","serde","bitflags/serde","utoipa"]
 
 [dependencies]
+utoipa = { version = "5.5.0", features = ["axum_extras"],optional = true }
 aya = { workspace = true, optional = true }
 serde = { workspace = true, optional = true }
 network-types = { workspace = true }

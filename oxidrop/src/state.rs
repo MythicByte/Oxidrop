@@ -34,6 +34,7 @@ use serde::{
     Serialize,
 };
 use tokio::sync::RwLock;
+use utoipa::ToSchema;
 
 use crate::db::{
     ActionPermissions,
@@ -54,35 +55,35 @@ pub struct FirewallState {
     pub subnet_matching_v4: Arc<RwLock<LpmTrie<MapData, u32, Action>>>,
     pub subnet_matching_v6: Arc<RwLock<LpmTrie<MapData, [u32; 4], Action>>>,
 }
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct AllowListV4Update {
     pub key: Ipv4Packet,
     pub state: AllowListState,
 }
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct AllowListV6Update {
     pub key: Ipv6Packet,
     pub state: AllowListState,
 }
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct PacketCountV4Update {
     pub key: Ipv4Packet,
     pub state: TokenBucketState,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct PacketCountV6Update {
     pub key: Ipv6Packet,
     pub state: TokenBucketState,
 }
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct SubnetMatchV4Update {
     pub network: u32,
     pub prefix_len: u32,
     pub action: Action,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct SubnetMatchV6Update {
     pub network: [u32; 4],
     pub prefix_len: u32,
@@ -90,7 +91,7 @@ pub struct SubnetMatchV6Update {
 }
 
 // But we need a "patch-style" request type that allows partial updates
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct ConfigPatch {
     // All fields optional — only specified fields get updated
     #[serde(default)]
@@ -102,6 +103,7 @@ pub struct ConfigPatch {
     #[serde(default)]
     pub default_profile: Option<RateProfile>,
     #[serde(default)]
+    #[ schema(value_type = Option<u16>)]
     pub protcol_allowed: Option<ActivaterEtherTypes>,
     #[serde(default)]
     pub ddos_activated: Option<bool>,
@@ -157,6 +159,12 @@ impl ConfigPatch {
     }
 }
 
+#[utoipa::path(
+    get,
+    path = "/api/v1/config",
+    responses((status = 200, description = "Get current firewall configuration")),
+    security(("cookie_auth" = []))
+)]
 /// get config from the firewall
 pub async fn get_config(State(state): State<FirewallState>) -> impl IntoResponse {
     match state.config.read().await.get(&0, 0) {
@@ -169,6 +177,18 @@ pub async fn get_config(State(state): State<FirewallState>) -> impl IntoResponse
     }
 }
 
+#[utoipa::path(
+    post,
+    path = "/api/v1/config",
+    request_body = ConfigPatch,
+    responses(
+        (status = 200, description = "Config updated successfully"),
+        (status = 400, description = "Bad Request"),
+        (status = 401, description = "Unauthorized"),
+        (status = 500, description = "Internal Server Error")
+    ),
+    security(("cookie_auth" = []))
+)]
 /// update firewall config
 pub async fn update_config(
     State(state): State<FirewallState>,
@@ -216,6 +236,12 @@ pub async fn update_config(
         StatusCode::UNAUTHORIZED.into_response()
     }
 }
+#[utoipa::path(
+    get,
+    path = "/api/v1/config/allow_list/v4",
+    responses((status = 200, description = "Get all items in the IPv4 Allow List")),
+    security(("cookie_auth" = []))
+)]
 /// GET: Fetch all items in the IPv4 Allow List
 pub async fn get_allow_list_v4(State(state): State<FirewallState>) -> impl IntoResponse {
     let map = state.allow_list_v4.read().await;
@@ -229,7 +255,13 @@ pub async fn get_allow_list_v4(State(state): State<FirewallState>) -> impl IntoR
 
     Json(entries).into_response()
 }
-
+#[utoipa::path(
+    post,
+    path = "/api/v1/config/allow_list/v4",
+    request_body = AllowListV4Update,
+    responses((status = 200, description = "Item inserted or updated"), (status = 401, description = "Unauthorized")),
+    security(("cookie_auth" = []))
+)]
 /// POST/PUT: Insert or update an item
 pub async fn modify_allow_list_v4(
     State(state): State<FirewallState>,
@@ -261,7 +293,12 @@ pub async fn modify_allow_list_v4(
         StatusCode::UNAUTHORIZED.into_response()
     }
 }
-
+#[utoipa::path(
+    delete,
+    path = "/api/v1/config/allow_list/v4",
+    responses((status = 200, description = "All entries cleared"), (status = 401, description = "Unauthorized")),
+    security(("cookie_auth" = []))
+)]
 /// DELETE: Clear all entries in the list
 pub async fn clear_allow_list_v4(
     State(state): State<FirewallState>,
@@ -296,6 +333,12 @@ pub async fn clear_allow_list_v4(
     }
 }
 
+#[utoipa::path(
+    get,
+    path = "/api/v1/config/allow_list/v6",
+    responses((status = 200, description = "Get all items in the IPv6 Allow List")),
+    security(("cookie_auth" = []))
+)]
 /// GET: Fetch all items in the IPv4 Allow List
 pub async fn get_allow_list_v6(State(state): State<FirewallState>) -> impl IntoResponse {
     let map = state.allow_list_v6.read().await;
@@ -310,6 +353,13 @@ pub async fn get_allow_list_v6(State(state): State<FirewallState>) -> impl IntoR
     Json(entries).into_response()
 }
 
+#[utoipa::path(
+    post,
+    path = "/api/v1/config/allow_list/v6",
+    request_body = AllowListV6Update,
+    responses((status = 200, description = "Item inserted or updated"), (status = 401, description = "Unauthorized")),
+    security(("cookie_auth" = []))
+)]
 /// POST/PUT: Insert or update an item
 pub async fn modify_allow_list_v6(
     State(state): State<FirewallState>,
@@ -342,6 +392,12 @@ pub async fn modify_allow_list_v6(
     }
 }
 
+#[utoipa::path(
+    delete,
+    path = "/api/v1/config/allow_list/v6",
+    responses((status = 200, description = "All entries cleared"), (status = 401, description = "Unauthorized")),
+    security(("cookie_auth" = []))
+)]
 /// DELETE: Clear all entries in the list
 pub async fn clear_allow_list_v6(
     State(state): State<FirewallState>,
@@ -376,6 +432,12 @@ pub async fn clear_allow_list_v6(
     }
 }
 
+#[utoipa::path(
+    get,
+    path = "/api/v1/config/packet_counts/v4",
+    responses((status = 200, description = "Get IPv4 packet counts")),
+    security(("cookie_auth" = []))
+)]
 pub async fn get_packet_counts_v4(State(state): State<FirewallState>) -> impl IntoResponse {
     let map = state.packet_counts_v4.read().await;
 
@@ -388,6 +450,13 @@ pub async fn get_packet_counts_v4(State(state): State<FirewallState>) -> impl In
     Json(entries).into_response()
 }
 
+#[utoipa::path(
+    post,
+    path = "/api/v1/config/packet_counts/v4",
+    request_body = PacketCountV4Update,
+    responses((status = 200, description = "Updated IPv4 packet count"), (status = 401, description = "Unauthorized")),
+    security(("cookie_auth" = []))
+)]
 pub async fn modify_packet_counts_v4(
     State(state): State<FirewallState>,
     auth_session: AuthSession<Database>,
@@ -418,6 +487,12 @@ pub async fn modify_packet_counts_v4(
     }
 }
 
+#[utoipa::path(
+    delete,
+    path = "/api/v1/config/packet_counts/v4",
+    responses((status = 200, description = "Cleared IPv4 packet counts"), (status = 401, description = "Unauthorized")),
+    security(("cookie_auth" = []))
+)]
 pub async fn clear_packet_counts_v4(
     State(state): State<FirewallState>,
     auth_session: AuthSession<Database>,
@@ -448,6 +523,12 @@ pub async fn clear_packet_counts_v4(
         StatusCode::UNAUTHORIZED.into_response()
     }
 }
+#[utoipa::path(
+    get,
+    path = "/api/v1/config/packet_counts/v6",
+    responses((status = 200, description = "Get IPv6 packet counts")),
+    security(("cookie_auth" = []))
+)]
 pub async fn get_packet_counts_v6(State(state): State<FirewallState>) -> impl IntoResponse {
     let map = state.packet_counts_v6.read().await;
 
@@ -460,6 +541,13 @@ pub async fn get_packet_counts_v6(State(state): State<FirewallState>) -> impl In
     Json(entries).into_response()
 }
 
+#[utoipa::path(
+    post,
+    path = "/api/v1/config/packet_counts/v6",
+    request_body = PacketCountV6Update,
+    responses((status = 200, description = "Updated IPv6 packet count"), (status = 401, description = "Unauthorized")),
+    security(("cookie_auth" = []))
+)]
 pub async fn modify_packet_counts_v6(
     State(state): State<FirewallState>,
     auth_session: AuthSession<Database>,
@@ -490,6 +578,12 @@ pub async fn modify_packet_counts_v6(
     }
 }
 
+#[utoipa::path(
+    delete,
+    path = "/api/v1/config/packet_counts/v6",
+    responses((status = 200, description = "Cleared IPv6 packet counts"), (status = 401, description = "Unauthorized")),
+    security(("cookie_auth" = []))
+)]
 pub async fn clear_packet_counts_v6(
     State(state): State<FirewallState>,
 
@@ -521,6 +615,13 @@ pub async fn clear_packet_counts_v6(
         StatusCode::UNAUTHORIZED.into_response()
     }
 }
+#[utoipa::path(
+    post,
+    path = "/api/v1/config/subnet/v4",
+    request_body = SubnetMatchV4Update,
+    responses((status = 200, description = "Added/Updated IPv4 subnet rule"), (status = 400, description = "Invalid prefix"), (status = 401, description = "Unauthorized")),
+    security(("cookie_auth" = []))
+)]
 pub async fn modify_subnet_matching_v4(
     State(state): State<FirewallState>,
     auth_session: AuthSession<Database>,
@@ -560,6 +661,13 @@ pub async fn modify_subnet_matching_v4(
     }
 }
 
+#[utoipa::path(
+    delete,
+    path = "/api/v1/config/subnet/v4",
+    request_body = SubnetMatchV4Update,
+    responses((status = 200, description = "Removed IPv4 subnet rule"), (status = 400, description = "Invalid prefix"), (status = 401, description = "Unauthorized")),
+    security(("cookie_auth" = []))
+)]
 pub async fn remove_subnet_matching_v4(
     State(state): State<FirewallState>,
     auth_session: AuthSession<Database>,
@@ -599,6 +707,13 @@ pub async fn remove_subnet_matching_v4(
     }
 }
 
+#[utoipa::path(
+    post,
+    path = "/api/v1/config/subnet/v6",
+    request_body = SubnetMatchV6Update,
+    responses((status = 200, description = "Added/Updated IPv6 subnet rule"), (status = 400, description = "Invalid prefix"), (status = 401, description = "Unauthorized")),
+    security(("cookie_auth" = []))
+)]
 pub async fn modify_subnet_matching_v6(
     State(state): State<FirewallState>,
     auth_session: AuthSession<Database>,
@@ -638,6 +753,13 @@ pub async fn modify_subnet_matching_v6(
     }
 }
 
+#[utoipa::path(
+    delete,
+    path = "/api/v1/config/subnet/v6",
+    request_body = SubnetMatchV6Update,
+    responses((status = 200, description = "Removed IPv6 subnet rule"), (status = 400, description = "Invalid prefix"), (status = 401, description = "Unauthorized")),
+    security(("cookie_auth" = []))
+)]
 pub async fn remove_subnet_matching_v6(
     State(state): State<FirewallState>,
     auth_session: AuthSession<Database>,
