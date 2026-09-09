@@ -268,3 +268,37 @@ fn burn_verify_time(password: &SecretString) {
         let _ = Argon2::default().verify_password(password.expose_secret().as_bytes(), &hash);
     }
 }
+#[derive(Serialize, ToSchema)]
+pub struct RoleAndPermissionsResponse {
+    pub role: String,                 // Adjust type if your Role is an enum (e.g., Role)
+    pub permissions: Vec<Permission>, // Or HashSet<Permission>
+}
+
+#[utoipa::path(
+    get,
+    path = "/api/v1/role_and_permissions",
+    responses(
+        (status = 200, description = "Retrieved role and permissions successfully", body = RoleAndPermissionsResponse),
+        (status = 401, description = "Unauthorized"),
+        (status = 500, description = "Internal Server Error")
+    ),
+    security(("cookie_auth" = []))
+)]
+pub async fn get_role_and_permissions(auth_session: AuthSession) -> impl IntoResponse {
+    let user = match auth_session.user {
+        Some(user) => user,
+        None => return StatusCode::UNAUTHORIZED.into_response(),
+    };
+
+    let permissions = match auth_session.backend.get_all_permissions(&user).await {
+        Ok(perms) => perms,
+        Err(_) => return StatusCode::INTERNAL_SERVER_ERROR.into_response(),
+    };
+
+    let response = RoleAndPermissionsResponse {
+        role: user.role.to_string(),
+        permissions: permissions.into_iter().collect(),
+    };
+
+    (StatusCode::OK, Json(response)).into_response()
+}

@@ -56,6 +56,7 @@ use crate::{
         crate::auth::login,
         crate::auth::logout,
         crate::auth::get_user,
+        crate::auth::get_role_and_permissions,
 
         // Users
         crate::api::create_user_endpoint,
@@ -141,6 +142,10 @@ fn safe_router() -> Router<FirewallState> {
     Router::new()
         .without_v07_checks()
         .route("/logout", get(crate::auth::logout))
+        .route(
+            "/role_and_permissions",
+            get(crate::auth::get_role_and_permissions),
+        )
         .nest("/config", config_router())
         .nest("/users", user_routes)
         .route_layer(login_required!(Database, login_url = "/api/v1/login"))
