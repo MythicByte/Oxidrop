@@ -1,11 +1,6 @@
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { client } from "./api";
@@ -15,7 +10,7 @@ export function LoginForm() {
   const [isLoading, setIsLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
 
-const handleSubmit = async (e: React.SyntheticEvent<HTMLFormElement>) => {
+  const handleSubmit = async (e: React.SyntheticEvent<HTMLFormElement>) => {
     e.preventDefault();
     setIsLoading(true);
     setError(null);
@@ -49,7 +44,7 @@ const handleSubmit = async (e: React.SyntheticEvent<HTMLFormElement>) => {
   };
 
   return (
-    // add Icon later 
+    // add Icon later
     <div className="flex min-h-screen flex-col items-center justify-center p-4 bg-background">
       <h1 className="text-4xl font-bold mb-8 tracking-tight">OxiDrop</h1>
 

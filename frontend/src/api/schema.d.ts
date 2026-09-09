@@ -4,1145 +4,1201 @@
  */
 
 export interface paths {
-    "/api/v1/config": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** get config from the firewall */
-        get: operations["get_config"];
-        put?: never;
-        /** update firewall config */
-        post: operations["update_config"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
+  "/api/v1/config": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
     };
-    "/api/v1/config/adapters": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get: operations["get_ebpf_adapters"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
+    /** get config from the firewall */
+    get: operations["get_config"];
+    put?: never;
+    /** update firewall config */
+    post: operations["update_config"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/config/adapters": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
     };
-    "/api/v1/config/allow_list/v4": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** GET: Fetch all items in the IPv4 Allow List */
-        get: operations["get_allow_list_v4"];
-        put?: never;
-        /** POST/PUT: Insert or update an item */
-        post: operations["modify_allow_list_v4"];
-        /** DELETE: Clear all entries in the list */
-        delete: operations["clear_allow_list_v4"];
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
+    get: operations["get_ebpf_adapters"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/config/allow_list/v4": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
     };
-    "/api/v1/config/allow_list/v6": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** GET: Fetch all items in the IPv4 Allow List */
-        get: operations["get_allow_list_v6"];
-        put?: never;
-        /** POST/PUT: Insert or update an item */
-        post: operations["modify_allow_list_v6"];
-        /** DELETE: Clear all entries in the list */
-        delete: operations["clear_allow_list_v6"];
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
+    /** GET: Fetch all items in the IPv4 Allow List */
+    get: operations["get_allow_list_v4"];
+    put?: never;
+    /** POST/PUT: Insert or update an item */
+    post: operations["modify_allow_list_v4"];
+    /** DELETE: Clear all entries in the list */
+    delete: operations["clear_allow_list_v4"];
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/config/allow_list/v6": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
     };
-    "/api/v1/config/packet_counts/v4": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get: operations["get_packet_counts_v4"];
-        put?: never;
-        post: operations["modify_packet_counts_v4"];
-        delete: operations["clear_packet_counts_v4"];
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
+    /** GET: Fetch all items in the IPv4 Allow List */
+    get: operations["get_allow_list_v6"];
+    put?: never;
+    /** POST/PUT: Insert or update an item */
+    post: operations["modify_allow_list_v6"];
+    /** DELETE: Clear all entries in the list */
+    delete: operations["clear_allow_list_v6"];
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/config/packet_counts/v4": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
     };
-    "/api/v1/config/packet_counts/v6": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get: operations["get_packet_counts_v6"];
-        put?: never;
-        post: operations["modify_packet_counts_v6"];
-        delete: operations["clear_packet_counts_v6"];
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
+    get: operations["get_packet_counts_v4"];
+    put?: never;
+    post: operations["modify_packet_counts_v4"];
+    delete: operations["clear_packet_counts_v4"];
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/config/packet_counts/v6": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
     };
-    "/api/v1/config/subnet/v4": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post: operations["modify_subnet_matching_v4"];
-        delete: operations["remove_subnet_matching_v4"];
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
+    get: operations["get_packet_counts_v6"];
+    put?: never;
+    post: operations["modify_packet_counts_v6"];
+    delete: operations["clear_packet_counts_v6"];
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/config/subnet/v4": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
     };
-    "/api/v1/config/subnet/v6": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post: operations["modify_subnet_matching_v6"];
-        delete: operations["remove_subnet_matching_v6"];
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
+    get?: never;
+    put?: never;
+    post: operations["modify_subnet_matching_v4"];
+    delete: operations["remove_subnet_matching_v4"];
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/config/subnet/v6": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
     };
-    "/api/v1/get_user": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get: operations["get_user"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
+    get?: never;
+    put?: never;
+    post: operations["modify_subnet_matching_v6"];
+    delete: operations["remove_subnet_matching_v6"];
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/get_user": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
     };
-    "/api/v1/login": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post: operations["login"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
+    get: operations["get_user"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/login": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
     };
-    "/api/v1/logout": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get: operations["logout"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
+    get?: never;
+    put?: never;
+    post: operations["login"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/logout": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
     };
-    "/api/v1/users/create_user": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post: operations["create_user_endpoint"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
+    get: operations["logout"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/role_and_permissions": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
     };
-    "/api/v1/users/delete_user": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post?: never;
-        delete: operations["delete_user_endpoint"];
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
+    get: operations["get_role_and_permissions"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/users/create_user": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
     };
-    "/api/v1/users/modify_user": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put: operations["modify_user_endpoint"];
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
+    get?: never;
+    put?: never;
+    post: operations["create_user_endpoint"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/users/delete_user": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
     };
-    "/api/v1/users/rename_user": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch: operations["rename_user_endpoint"];
-        trace?: never;
+    get?: never;
+    put?: never;
+    post?: never;
+    delete: operations["delete_user_endpoint"];
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/users/modify_user": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
     };
+    get?: never;
+    put: operations["modify_user_endpoint"];
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/users/rename_user": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch: operations["rename_user_endpoint"];
+    trace?: never;
+  };
 }
 export type webhooks = Record<string, never>;
 export interface components {
-    schemas: {
-        /**
-         * @description What to do with a list
-         * @enum {string}
-         */
-        Action: "Allow" | "Deny";
-        AdapterInfo: {
-            /** Format: int32 */
-            index: number;
-            name: string;
-        };
-        AdaptersResponse: {
-            incoming?: null | components["schemas"]["AdapterInfo"];
-            output?: null | components["schemas"]["AdapterInfo"];
-        };
-        AllowListState: {
-            action: components["schemas"]["Action"];
-            /** Format: int64 */
-            last_seen: number;
-        };
-        AllowListV4Update: {
-            key: components["schemas"]["Ipv4Packet"];
-            state: components["schemas"]["AllowListState"];
-        };
-        AllowListV6Update: {
-            key: components["schemas"]["Ipv6Packet"];
-            state: components["schemas"]["AllowListState"];
-        };
-        AppUser: {
-            /** Format: int64 */
-            id: number;
-            password_hash: string;
-            /** Format: int32 */
-            permissions: number;
-            role: components["schemas"]["RolesUser"];
-            username: string;
-        };
-        ConfigPatch: {
-            ddos_activated?: boolean | null;
-            default_profile?: null | components["schemas"]["RateProfile"];
-            icmp_profile?: null | components["schemas"]["RateProfile"];
-            /** Format: int32 */
-            incoming_ethernet_adapter?: number | null;
-            /** Format: int32 */
-            output_ethernet_adapter?: number | null;
-            /** Format: int32 */
-            protcol_allowed?: number | null;
-            tcp_profile?: null | components["schemas"]["RateProfile"];
-            udp_profile?: null | components["schemas"]["RateProfile"];
-        };
-        CreateUserReq: {
-            password: string;
-            /** Format: int32 */
-            permissions: number;
-            role: components["schemas"]["RolesUser"];
-            username: string;
-        };
-        Credentials: {
-            password: string;
-            username: string;
-        };
-        DeleteUserReq: {
-            target_username: string;
-        };
-        /**
-         * @description Tightly packed 5-Tuple for IPv4 state tracking
-         *     Total size: 16 bytes (Strictly aligned)
-         */
-        Ipv4Packet: {
-            /** Format: int32 */
-            _pad?: number;
-            /** Format: int32 */
-            _pad2?: number;
-            /** Format: int32 */
-            destination_addr: number;
-            /** Format: int32 */
-            destination_port: number;
-            /** Format: int32 */
-            protocol: number;
-            /** Format: int32 */
-            source_addr: number;
-            /** Format: int32 */
-            source_port: number;
-        };
-        /**
-         * @description Tightly packed 5-Tuple for IPv6 state tracking
-         *     Total size: 40 bytes (Strictly aligned)
-         */
-        Ipv6Packet: {
-            _pad?: number[];
-            destination_addr: number[];
-            /** Format: int32 */
-            destination_port: number;
-            /** Format: int32 */
-            protocol: number;
-            source_addr: number[];
-            /** Format: int32 */
-            source_port: number;
-        };
-        ModifyUserReq: {
-            /** Format: int64 */
-            is_active: number;
-            /** Format: int32 */
-            permissions: number;
-            role: components["schemas"]["RolesUser"];
-            target_username: string;
-        };
-        PacketCountV4Update: {
-            key: components["schemas"]["Ipv4Packet"];
-            state: components["schemas"]["TokenBucketState"];
-        };
-        PacketCountV6Update: {
-            key: components["schemas"]["Ipv6Packet"];
-            state: components["schemas"]["TokenBucketState"];
-        };
-        /** @enum {string} */
-        Permission: "Create" | "Modify" | "Delete";
-        /** @description Bucket State for Rate Limiting */
-        RateProfile: {
-            /** Format: int64 */
-            burst: number;
-            /** Format: int64 */
-            rate_shift: number;
-        };
-        RenameUserReq: {
-            current_username: string;
-            new_username: string;
-        };
-        /** @enum {string} */
-        RolesUser: "Viewer" | "Admin";
-        SubnetMatchV4Update: {
-            action: components["schemas"]["Action"];
-            /** Format: int32 */
-            network: number;
-            /** Format: int32 */
-            prefix_len: number;
-        };
-        SubnetMatchV6Update: {
-            action: components["schemas"]["Action"];
-            network: number[];
-            /** Format: int32 */
-            prefix_len: number;
-        };
-        /** @description The ddos protection bucket */
-        TokenBucketState: {
-            /** Format: int64 */
-            last_update: number;
-            /** Format: int64 */
-            tokens: number;
-        };
+  schemas: {
+    /**
+     * @description What to do with a list
+     * @enum {string}
+     */
+    Action: "Allow" | "Deny";
+    AdapterInfo: {
+      /** Format: int32 */
+      index: number;
+      name: string;
     };
-    responses: never;
-    parameters: never;
-    requestBodies: never;
-    headers: never;
-    pathItems: never;
+    AdaptersResponse: {
+      incoming?: null | components["schemas"]["AdapterInfo"];
+      output?: null | components["schemas"]["AdapterInfo"];
+    };
+    AllowListState: {
+      action: components["schemas"]["Action"];
+      /** Format: int64 */
+      last_seen: number;
+    };
+    AllowListV4Update: {
+      key: components["schemas"]["Ipv4Packet"];
+      state: components["schemas"]["AllowListState"];
+    };
+    AllowListV6Update: {
+      key: components["schemas"]["Ipv6Packet"];
+      state: components["schemas"]["AllowListState"];
+    };
+    AppUser: {
+      /** Format: int64 */
+      id: number;
+      password_hash: string;
+      /** Format: int32 */
+      permissions: number;
+      role: components["schemas"]["RolesUser"];
+      username: string;
+    };
+    ConfigPatch: {
+      ddos_activated?: boolean | null;
+      default_profile?: null | components["schemas"]["RateProfile"];
+      icmp_profile?: null | components["schemas"]["RateProfile"];
+      /** Format: int32 */
+      incoming_ethernet_adapter?: number | null;
+      /** Format: int32 */
+      output_ethernet_adapter?: number | null;
+      /** Format: int32 */
+      protcol_allowed?: number | null;
+      tcp_profile?: null | components["schemas"]["RateProfile"];
+      udp_profile?: null | components["schemas"]["RateProfile"];
+    };
+    CreateUserReq: {
+      password: string;
+      /** Format: int32 */
+      permissions: number;
+      role: components["schemas"]["RolesUser"];
+      username: string;
+    };
+    Credentials: {
+      password: string;
+      username: string;
+    };
+    DeleteUserReq: {
+      target_username: string;
+    };
+    /**
+     * @description Tightly packed 5-Tuple for IPv4 state tracking
+     *     Total size: 16 bytes (Strictly aligned)
+     */
+    Ipv4Packet: {
+      /** Format: int32 */
+      _pad?: number;
+      /** Format: int32 */
+      _pad2?: number;
+      /** Format: int32 */
+      destination_addr: number;
+      /** Format: int32 */
+      destination_port: number;
+      /** Format: int32 */
+      protocol: number;
+      /** Format: int32 */
+      source_addr: number;
+      /** Format: int32 */
+      source_port: number;
+    };
+    /**
+     * @description Tightly packed 5-Tuple for IPv6 state tracking
+     *     Total size: 40 bytes (Strictly aligned)
+     */
+    Ipv6Packet: {
+      _pad?: number[];
+      destination_addr: number[];
+      /** Format: int32 */
+      destination_port: number;
+      /** Format: int32 */
+      protocol: number;
+      source_addr: number[];
+      /** Format: int32 */
+      source_port: number;
+    };
+    ModifyUserReq: {
+      /** Format: int64 */
+      is_active: number;
+      /** Format: int32 */
+      permissions: number;
+      role: components["schemas"]["RolesUser"];
+      target_username: string;
+    };
+    PacketCountV4Update: {
+      key: components["schemas"]["Ipv4Packet"];
+      state: components["schemas"]["TokenBucketState"];
+    };
+    PacketCountV6Update: {
+      key: components["schemas"]["Ipv6Packet"];
+      state: components["schemas"]["TokenBucketState"];
+    };
+    /** @enum {string} */
+    Permission: "Create" | "Modify" | "Delete";
+    /** @description Bucket State for Rate Limiting */
+    RateProfile: {
+      /** Format: int64 */
+      burst: number;
+      /** Format: int64 */
+      rate_shift: number;
+    };
+    RenameUserReq: {
+      current_username: string;
+      new_username: string;
+    };
+    RoleAndPermissionsResponse: {
+      permissions: components["schemas"]["Permission"][];
+      role: string;
+    };
+    /** @enum {string} */
+    RolesUser: "Viewer" | "Admin";
+    SubnetMatchV4Update: {
+      action: components["schemas"]["Action"];
+      /** Format: int32 */
+      network: number;
+      /** Format: int32 */
+      prefix_len: number;
+    };
+    SubnetMatchV6Update: {
+      action: components["schemas"]["Action"];
+      network: number[];
+      /** Format: int32 */
+      prefix_len: number;
+    };
+    /** @description The ddos protection bucket */
+    TokenBucketState: {
+      /** Format: int64 */
+      last_update: number;
+      /** Format: int64 */
+      tokens: number;
+    };
+  };
+  responses: never;
+  parameters: never;
+  requestBodies: never;
+  headers: never;
+  pathItems: never;
 }
 export type $defs = Record<string, never>;
 export interface operations {
-    get_config: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Get current firewall configuration */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
+  get_config: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
     };
-    update_config: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
+    requestBody?: never;
+    responses: {
+      /** @description Get current firewall configuration */
+      200: {
+        headers: {
+          [name: string]: unknown;
         };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["ConfigPatch"];
-            };
-        };
-        responses: {
-            /** @description Config updated successfully */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Bad Request */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Unauthorized */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Internal Server Error */
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
+        content?: never;
+      };
     };
-    get_ebpf_adapters: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successfully retrieved active adapters */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AdaptersResponse"];
-                };
-            };
-            /** @description Unauthorized */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Internal Server Error */
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
+  };
+  update_config: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
     };
-    get_allow_list_v4: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Get all items in the IPv4 Allow List */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["ConfigPatch"];
+      };
     };
-    modify_allow_list_v4: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
+    responses: {
+      /** @description Config updated successfully */
+      200: {
+        headers: {
+          [name: string]: unknown;
         };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["AllowListV4Update"];
-            };
+        content?: never;
+      };
+      /** @description Bad Request */
+      400: {
+        headers: {
+          [name: string]: unknown;
         };
-        responses: {
-            /** @description Item inserted or updated */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Unauthorized */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
+        content?: never;
+      };
+      /** @description Unauthorized */
+      401: {
+        headers: {
+          [name: string]: unknown;
         };
+        content?: never;
+      };
+      /** @description Internal Server Error */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
     };
-    clear_allow_list_v4: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description All entries cleared */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Unauthorized */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
+  };
+  get_ebpf_adapters: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
     };
-    get_allow_list_v6: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
+    requestBody?: never;
+    responses: {
+      /** @description Successfully retrieved active adapters */
+      200: {
+        headers: {
+          [name: string]: unknown;
         };
-        requestBody?: never;
-        responses: {
-            /** @description Get all items in the IPv6 Allow List */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
+        content: {
+          "application/json": components["schemas"]["AdaptersResponse"];
         };
+      };
+      /** @description Unauthorized */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Internal Server Error */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
     };
-    modify_allow_list_v6: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["AllowListV6Update"];
-            };
-        };
-        responses: {
-            /** @description Item inserted or updated */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Unauthorized */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
+  };
+  get_allow_list_v4: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
     };
-    clear_allow_list_v6: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
+    requestBody?: never;
+    responses: {
+      /** @description Get all items in the IPv4 Allow List */
+      200: {
+        headers: {
+          [name: string]: unknown;
         };
-        requestBody?: never;
-        responses: {
-            /** @description All entries cleared */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Unauthorized */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
+        content?: never;
+      };
     };
-    get_packet_counts_v4: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Get IPv4 packet counts */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
+  };
+  modify_allow_list_v4: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
     };
-    modify_packet_counts_v4: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["PacketCountV4Update"];
-            };
-        };
-        responses: {
-            /** @description Updated IPv4 packet count */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Unauthorized */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["AllowListV4Update"];
+      };
     };
-    clear_packet_counts_v4: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
+    responses: {
+      /** @description Item inserted or updated */
+      200: {
+        headers: {
+          [name: string]: unknown;
         };
-        requestBody?: never;
-        responses: {
-            /** @description Cleared IPv4 packet counts */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Unauthorized */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
+        content?: never;
+      };
+      /** @description Unauthorized */
+      401: {
+        headers: {
+          [name: string]: unknown;
         };
+        content?: never;
+      };
     };
-    get_packet_counts_v6: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Get IPv6 packet counts */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
+  };
+  clear_allow_list_v4: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
     };
-    modify_packet_counts_v6: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
+    requestBody?: never;
+    responses: {
+      /** @description All entries cleared */
+      200: {
+        headers: {
+          [name: string]: unknown;
         };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["PacketCountV6Update"];
-            };
+        content?: never;
+      };
+      /** @description Unauthorized */
+      401: {
+        headers: {
+          [name: string]: unknown;
         };
-        responses: {
-            /** @description Updated IPv6 packet count */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Unauthorized */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
+        content?: never;
+      };
     };
-    clear_packet_counts_v6: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Cleared IPv6 packet counts */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Unauthorized */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
+  };
+  get_allow_list_v6: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
     };
-    modify_subnet_matching_v4: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
+    requestBody?: never;
+    responses: {
+      /** @description Get all items in the IPv6 Allow List */
+      200: {
+        headers: {
+          [name: string]: unknown;
         };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["SubnetMatchV4Update"];
-            };
-        };
-        responses: {
-            /** @description Added/Updated IPv4 subnet rule */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Invalid prefix */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Unauthorized */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
+        content?: never;
+      };
     };
-    remove_subnet_matching_v4: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["SubnetMatchV4Update"];
-            };
-        };
-        responses: {
-            /** @description Removed IPv4 subnet rule */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Invalid prefix */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Unauthorized */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
+  };
+  modify_allow_list_v6: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
     };
-    modify_subnet_matching_v6: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["SubnetMatchV6Update"];
-            };
-        };
-        responses: {
-            /** @description Added/Updated IPv6 subnet rule */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Invalid prefix */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Unauthorized */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["AllowListV6Update"];
+      };
     };
-    remove_subnet_matching_v6: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
+    responses: {
+      /** @description Item inserted or updated */
+      200: {
+        headers: {
+          [name: string]: unknown;
         };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["SubnetMatchV6Update"];
-            };
+        content?: never;
+      };
+      /** @description Unauthorized */
+      401: {
+        headers: {
+          [name: string]: unknown;
         };
-        responses: {
-            /** @description Removed IPv6 subnet rule */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Invalid prefix */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Unauthorized */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
+        content?: never;
+      };
     };
-    get_user: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Session valid */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AppUser"];
-                };
-            };
-            /** @description Unauthorized */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
+  };
+  clear_allow_list_v6: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
     };
-    login: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
+    requestBody?: never;
+    responses: {
+      /** @description All entries cleared */
+      200: {
+        headers: {
+          [name: string]: unknown;
         };
-        requestBody: {
-            content: {
-                "application/x-www-form-urlencoded": components["schemas"]["Credentials"];
-            };
+        content?: never;
+      };
+      /** @description Unauthorized */
+      401: {
+        headers: {
+          [name: string]: unknown;
         };
-        responses: {
-            /** @description Login successful */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Unauthorized */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
+        content?: never;
+      };
     };
-    logout: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Logout successful */
-            303: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
+  };
+  get_packet_counts_v4: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
     };
-    create_user_endpoint: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
+    requestBody?: never;
+    responses: {
+      /** @description Get IPv4 packet counts */
+      200: {
+        headers: {
+          [name: string]: unknown;
         };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["CreateUserReq"];
-            };
-        };
-        responses: {
-            /** @description User created successfully */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Unauthorized */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Forbidden */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description User already exists */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
+        content?: never;
+      };
     };
-    delete_user_endpoint: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["DeleteUserReq"];
-            };
-        };
-        responses: {
-            /** @description User deleted */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Unauthorized */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
+  };
+  modify_packet_counts_v4: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
     };
-    modify_user_endpoint: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["ModifyUserReq"];
-            };
-        };
-        responses: {
-            /** @description User modified */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Unauthorized */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["PacketCountV4Update"];
+      };
     };
-    rename_user_endpoint: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
+    responses: {
+      /** @description Updated IPv4 packet count */
+      200: {
+        headers: {
+          [name: string]: unknown;
         };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["RenameUserReq"];
-            };
+        content?: never;
+      };
+      /** @description Unauthorized */
+      401: {
+        headers: {
+          [name: string]: unknown;
         };
-        responses: {
-            /** @description User renamed */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Unauthorized */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
+        content?: never;
+      };
     };
+  };
+  clear_packet_counts_v4: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Cleared IPv4 packet counts */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Unauthorized */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  get_packet_counts_v6: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Get IPv6 packet counts */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  modify_packet_counts_v6: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["PacketCountV6Update"];
+      };
+    };
+    responses: {
+      /** @description Updated IPv6 packet count */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Unauthorized */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  clear_packet_counts_v6: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Cleared IPv6 packet counts */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Unauthorized */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  modify_subnet_matching_v4: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["SubnetMatchV4Update"];
+      };
+    };
+    responses: {
+      /** @description Added/Updated IPv4 subnet rule */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Invalid prefix */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Unauthorized */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  remove_subnet_matching_v4: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["SubnetMatchV4Update"];
+      };
+    };
+    responses: {
+      /** @description Removed IPv4 subnet rule */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Invalid prefix */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Unauthorized */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  modify_subnet_matching_v6: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["SubnetMatchV6Update"];
+      };
+    };
+    responses: {
+      /** @description Added/Updated IPv6 subnet rule */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Invalid prefix */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Unauthorized */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  remove_subnet_matching_v6: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["SubnetMatchV6Update"];
+      };
+    };
+    responses: {
+      /** @description Removed IPv6 subnet rule */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Invalid prefix */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Unauthorized */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  get_user: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Session valid */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["AppUser"];
+        };
+      };
+      /** @description Unauthorized */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  login: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/x-www-form-urlencoded":
+          components["schemas"]["Credentials"];
+      };
+    };
+    responses: {
+      /** @description Login successful */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Unauthorized */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  logout: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Logout successful */
+      303: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  get_role_and_permissions: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Retrieved role and permissions successfully */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json":
+            components["schemas"]["RoleAndPermissionsResponse"];
+        };
+      };
+      /** @description Unauthorized */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Internal Server Error */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  create_user_endpoint: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["CreateUserReq"];
+      };
+    };
+    responses: {
+      /** @description User created successfully */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Unauthorized */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Forbidden */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description User already exists */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  delete_user_endpoint: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["DeleteUserReq"];
+      };
+    };
+    responses: {
+      /** @description User deleted */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Unauthorized */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  modify_user_endpoint: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["ModifyUserReq"];
+      };
+    };
+    responses: {
+      /** @description User modified */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Unauthorized */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  rename_user_endpoint: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["RenameUserReq"];
+      };
+    };
+    responses: {
+      /** @description User renamed */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Unauthorized */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
 }

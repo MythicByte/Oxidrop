@@ -570,6 +570,37 @@
         ]
       }
     },
+    "/api/v1/role_and_permissions": {
+      "get": {
+        "tags": [
+          "crate::auth"
+        ],
+        "operationId": "get_role_and_permissions",
+        "responses": {
+          "200": {
+            "description": "Retrieved role and permissions successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RoleAndPermissionsResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "500": {
+            "description": "Internal Server Error"
+          }
+        },
+        "security": [
+          {
+            "cookie_auth": []
+          }
+        ]
+      }
+    },
     "/api/v1/users/create_user": {
       "post": {
         "tags": [
@@ -1151,6 +1182,24 @@
             "type": "string"
           },
           "new_username": {
+            "type": "string"
+          }
+        }
+      },
+      "RoleAndPermissionsResponse": {
+        "type": "object",
+        "required": [
+          "role",
+          "permissions"
+        ],
+        "properties": {
+          "permissions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Permission"
+            }
+          },
+          "role": {
             "type": "string"
           }
         }

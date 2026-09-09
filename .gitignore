@@ -10,3 +10,5 @@ target/
 
 # Ensure the SQLx offline metadata directory is tracked 
 !.sqlx/
+**/oxidrop.db-shm
+**/oxidrop.db-wal

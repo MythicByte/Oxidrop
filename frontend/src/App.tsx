@@ -14,36 +14,40 @@ function App() {
       try {
         // Ask the Rust backend if our HttpOnly cookie is still valid
         const { response, data } = await client.GET("/api/v1/get_user");
-        
+
         if (response.ok && data) {
           setIsAuthenticated(true);
-          localStorage.setItem("username", data.username); 
+          localStorage.setItem("username", data.username);
         } else {
           setIsAuthenticated(false);
-                  }
+        }
       } catch (error) {
         console.error("Auth check failed:", error);
         setIsAuthenticated(false);
       }
     };
-    
+
     checkAuth();
-  }, []); 
+  }, []);
   if (isAuthenticated === null) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-background text-foreground">
-        <p className="text-muted-foreground animate-pulse">Verifying secure session...</p>
+        <p className="text-muted-foreground animate-pulse">
+          Verifying secure session...
+        </p>
       </div>
     );
   }
 
-return (
+  return (
     <BrowserRouter>
       <Routes>
         {/* If already authenticated, redirect away from login page */}
-        <Route 
-          path="/login" 
-          element={isAuthenticated ? <Navigate to="/dashboard" replace /> : <LoginForm />} 
+        <Route
+          path="/login"
+          element={isAuthenticated
+            ? <Navigate to="/dashboard" replace />
+            : <LoginForm />}
         />
 
         <Route element={<ProtectedRoute isAuthenticated={isAuthenticated} />}>
