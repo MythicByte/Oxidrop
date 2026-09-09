@@ -22,6 +22,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/config/adapters": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["get_ebpf_adapters"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/config/allow_list/v4": {
         parameters: {
             query?: never;
@@ -119,6 +135,22 @@ export interface paths {
         put?: never;
         post: operations["modify_subnet_matching_v6"];
         delete: operations["remove_subnet_matching_v6"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/get_user": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["get_user"];
+        put?: never;
+        post?: never;
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -229,6 +261,15 @@ export interface components {
          * @enum {string}
          */
         Action: "Allow" | "Deny";
+        AdapterInfo: {
+            /** Format: int32 */
+            index: number;
+            name: string;
+        };
+        AdaptersResponse: {
+            incoming?: null | components["schemas"]["AdapterInfo"];
+            output?: null | components["schemas"]["AdapterInfo"];
+        };
         AllowListState: {
             action: components["schemas"]["Action"];
             /** Format: int64 */
@@ -417,6 +458,40 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    get_ebpf_adapters: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successfully retrieved active adapters */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdaptersResponse"];
+                };
             };
             /** @description Unauthorized */
             401: {
@@ -866,6 +941,33 @@ export interface operations {
             };
         };
     };
+    get_user: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Session valid */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AppUser"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     login: {
         parameters: {
             query?: never;
@@ -880,7 +982,7 @@ export interface operations {
         };
         responses: {
             /** @description Login successful */
-            303: {
+            200: {
                 headers: {
                     [name: string]: unknown;
                 };

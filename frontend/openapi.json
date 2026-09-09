@@ -65,6 +65,37 @@
         ]
       }
     },
+    "/api/v1/config/adapters": {
+      "get": {
+        "tags": [
+          "crate::ebpf"
+        ],
+        "operationId": "get_ebpf_adapters",
+        "responses": {
+          "200": {
+            "description": "Successfully retrieved active adapters",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdaptersResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "500": {
+            "description": "Internal Server Error"
+          }
+        },
+        "security": [
+          {
+            "cookie_auth": []
+          }
+        ]
+      }
+    },
     "/api/v1/config/allow_list/v4": {
       "get": {
         "tags": [
@@ -467,6 +498,34 @@
         ]
       }
     },
+    "/api/v1/get_user": {
+      "get": {
+        "tags": [
+          "crate::auth"
+        ],
+        "operationId": "get_user",
+        "responses": {
+          "200": {
+            "description": "Session valid",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppUser"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        },
+        "security": [
+          {
+            "cookie_auth": []
+          }
+        ]
+      }
+    },
     "/api/v1/login": {
       "post": {
         "tags": [
@@ -484,7 +543,7 @@
           "required": true
         },
         "responses": {
-          "303": {
+          "200": {
             "description": "Login successful"
           },
           "401": {
@@ -651,6 +710,48 @@
           "Allow",
           "Deny"
         ]
+      },
+      "AdapterInfo": {
+        "type": "object",
+        "required": [
+          "index",
+          "name"
+        ],
+        "properties": {
+          "index": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "name": {
+            "type": "string"
+          }
+        }
+      },
+      "AdaptersResponse": {
+        "type": "object",
+        "properties": {
+          "incoming": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/AdapterInfo"
+              }
+            ]
+          },
+          "output": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/AdapterInfo"
+              }
+            ]
+          }
+        }
       },
       "AllowListState": {
         "type": "object",
