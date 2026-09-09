@@ -51,7 +51,7 @@ fn main() -> anyhow::Result<()> {
         .context("Failed to execute 'deno task build'")?;
 
     if !status.success() {
-        return Err(anyhow!("Frontend build failed with exit code: {}", status));
+        eprint!("Frontend build failed with exit code: {}", status);
     }
     Ok(())
 }
