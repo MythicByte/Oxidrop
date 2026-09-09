@@ -20,7 +20,7 @@ axum = "0.8.9"
 hyper = "1.10.1"
 hyper-util = "0.1.20"
 tracing-subscriber = { version = "0.3.22", features = ["local-time"] }
-rustix = { version = "1.1.4", features = ["time"] }
+rustix = { version = "1.1.4", features = ["time","linux_latest","net"] }
 sqlx = { version = "0.9", features = [ "runtime-tokio","sqlite","derive","macros","migrate" ] }
 thiserror = "2.0.20"
 argon2 = "0.6"

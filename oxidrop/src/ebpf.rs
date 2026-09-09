@@ -1,6 +1,12 @@
 use std::mem;
 
 use anyhow::Context;
+use axum::{
+    Json,
+    extract::State,
+    response::IntoResponse,
+};
+use axum_login::AuthSession;
 use aya::{
     Ebpf,
     maps::{
@@ -14,22 +20,37 @@ use aya::{
         xdp::XdpLinkId,
     },
 };
+use hyper::StatusCode;
 use oxidrop_common::{
     AllowListState,
     FirewallConfig,
     TokenBucketState,
 };
+use rustix::net::{
+    AddressFamily,
+    SocketType,
+    netdevice::index_to_name_inlined,
+    socket,
+};
+use serde::Serialize;
 use tracing::{
     info,
     warn,
 };
+use utoipa::ToSchema;
 
-use crate::Opt;
+use crate::{
+    Opt,
+    db::Database,
+    state::FirewallState,
+};
 
 pub struct EbpfProgramm {
     ebpf: Ebpf,
     /// for shut down or restart
     programm_loaded: Vec<XdpLinkId>,
+    outcoming_adapter: Option<u32>,
+    incoming_adapter: Option<u32>,
 }
 impl EbpfProgramm {
     pub fn new() -> anyhow::Result<EbpfProgramm> {
@@ -67,6 +88,8 @@ impl EbpfProgramm {
         let mut self_owned = Self {
             ebpf,
             programm_loaded: Vec::new(),
+            outcoming_adapter: None,
+            incoming_adapter: None,
         };
         let xdp = self_owned.xdp()?;
         xdp.load()?;
@@ -87,6 +110,8 @@ impl EbpfProgramm {
         for link_id in programm_loaded_taken.into_iter() {
             let _ = xdp.detach(link_id);
         }
+        self.outcoming_adapter = None;
+        self.incoming_adapter = None;
         Ok(())
     }
     pub fn reboot(&mut self, config: &FirewallConfig, opt: &Opt) -> anyhow::Result<()> {
@@ -100,6 +125,7 @@ impl EbpfProgramm {
                 info!("XDP program attached to incoming adapter: {}", if_index);
                 id
             };
+            self.incoming_adapter = Some(if_index);
             self.programm_loaded.push(link_id);
         }
 
@@ -112,6 +138,7 @@ impl EbpfProgramm {
                 info!("XDP program attached to output adapter: {}", if_index);
                 id
             };
+            self.outcoming_adapter = Some(if_index);
             self.programm_loaded.push(link_id);
         }
         Ok(())
@@ -192,5 +219,80 @@ impl EbpfProgramm {
             subnet_matching_v4,
             subnet_matching_v6,
         ))
+    }
+}
+fn resolve_iface(index: u32) -> AdapterInfo {
+    // Open a dummy socket (required by the kernel to process the SIOCGIFNAME ioctl)
+    let name = socket(AddressFamily::INET, SocketType::DGRAM, None)
+        .and_then(|fd| index_to_name_inlined(&fd, index))
+        .map(|inlined_name| inlined_name.to_string())
+        .unwrap_or_else(|_| "unknown_or_down".to_string());
+
+    AdapterInfo { index, name }
+}
+#[derive(Debug, Serialize, ToSchema)]
+pub struct AdapterInfo {
+    pub index: u32,
+    pub name: String,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct AdaptersResponse {
+    pub incoming: Option<AdapterInfo>,
+    pub output: Option<AdapterInfo>,
+}
+#[utoipa::path(
+    get,
+    path = "/api/v1/config/adapters",
+    responses(
+        (status = 200, description = "Successfully retrieved active adapters", body = AdaptersResponse),
+        (status = 401, description = "Unauthorized"),
+        (status = 500, description = "Internal Server Error")
+    ),
+    security(("cookie_auth" = []))
+)]
+pub async fn get_ebpf_adapters(
+    State(state): State<FirewallState>,
+    auth_session: AuthSession<Database>,
+) -> impl IntoResponse {
+    if auth_session.user.is_none() {
+        return StatusCode::UNAUTHORIZED.into_response();
+    }
+
+    let cfg = match state.config.read().await.get(&0, 0) {
+        Ok(cfg) => cfg,
+        Err(e) => {
+            tracing::error!("Failed to retrieve CONFIG map: {}", e);
+            return (StatusCode::INTERNAL_SERVER_ERROR, "CONFIG map unavailable").into_response();
+        }
+    };
+
+    let response = AdaptersResponse {
+        incoming: cfg.incoming_ethernet_adapter.map(resolve_iface),
+        output: cfg.output_ethernet_adapter.map(resolve_iface),
+    };
+
+    (StatusCode::OK, Json(response)).into_response()
+}
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_resolve_loopback() {
+        let info = resolve_iface(1);
+        assert_eq!(info.index, 1);
+        assert_eq!(
+            info.name, "lo",
+            "Index 1 must resolve to the loopback interface"
+        );
+    }
+
+    #[test]
+    fn test_resolve_nonexistent_interface() {
+        // An absurdly high interface index that shouldn't exist on any normal machine
+        let info = resolve_iface(u32::MAX);
+        assert_eq!(info.index, u32::MAX);
+        assert_eq!(info.name, "unknown_or_down");
     }
 }

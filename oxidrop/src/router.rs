@@ -55,6 +55,7 @@ use crate::{
         // Auth
         crate::auth::login,
         crate::auth::logout,
+        crate::auth::get_user,
 
         // Users
         crate::api::create_user_endpoint,
@@ -65,6 +66,7 @@ use crate::{
         // Config
         crate::state::get_config,
         crate::state::update_config,
+        crate::ebpf::get_ebpf_adapters,
 
         // Allow Lists
         crate::state::get_allow_list_v4,
@@ -124,6 +126,7 @@ fn unsafe_router() -> Router<FirewallState> {
     Router::new()
         .without_v07_checks()
         .route("/login", post(crate::auth::login))
+        .route("/get_user", get(crate::auth::get_user))
 }
 /// # User **is** Authenticated
 ///

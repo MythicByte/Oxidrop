@@ -36,11 +36,14 @@ use serde::{
 use tokio::sync::RwLock;
 use utoipa::ToSchema;
 
-use crate::db::{
-    ActionPermissions,
-    CallerContext,
-    Database,
-    RolesUser,
+use crate::{
+    db::{
+        ActionPermissions,
+        CallerContext,
+        Database,
+        RolesUser,
+    },
+    ebpf::get_ebpf_adapters,
 };
 
 /// Firewall internal state
@@ -802,6 +805,7 @@ pub async fn remove_subnet_matching_v6(
 pub fn config_router() -> Router<FirewallState> {
     Router::new()
         .route("/", get(get_config).post(update_config))
+        .route("/adapters", get(get_ebpf_adapters))
         .route(
             "/allow_list/v4",
             get(get_allow_list_v4)

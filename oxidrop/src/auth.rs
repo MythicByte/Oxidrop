@@ -16,6 +16,7 @@ use argon2::{
 };
 use axum::{
     Form,
+    Json,
     response::{
         IntoResponse,
         Redirect,
@@ -205,7 +206,7 @@ type AuthSession = axum_login::AuthSession<Database>;
     post,
     path = "/api/v1/login",
     request_body(content = Credentials, content_type = "application/x-www-form-urlencoded"),
-    responses((status = 303, description = "Login successful"), (status = 401, description = "Unauthorized"))
+    responses((status = 200, description = "Login successful"), (status = 401, description = "Unauthorized"))
 )]
 pub async fn login(
     mut auth_session: AuthSession,
@@ -221,7 +222,7 @@ pub async fn login(
         return StatusCode::INTERNAL_SERVER_ERROR.into_response();
     }
 
-    Redirect::to("/protected").into_response()
+    StatusCode::OK.into_response()
 }
 #[utoipa::path(
     get,
@@ -233,6 +234,21 @@ pub async fn logout(mut auth_session: AuthSession) -> impl IntoResponse {
     match auth_session.logout().await {
         Ok(_) => Redirect::to("/login").into_response(),
         Err(_) => StatusCode::INTERNAL_SERVER_ERROR.into_response(),
+    }
+}
+#[utoipa::path(
+    get,
+    path = "/api/v1/get_user",
+    responses(
+        (status = 200, description = "Session valid", body = AppUser),
+        (status = 401, description = "Unauthorized")
+    ),
+    security(("cookie_auth" = []))
+)]
+pub async fn get_user(auth_session: AuthSession) -> impl IntoResponse {
+    match auth_session.user {
+        Some(user) => (StatusCode::OK, Json(user)).into_response(),
+        None => StatusCode::UNAUTHORIZED.into_response(),
     }
 }
 fn dummy_password_hash() -> &'static str {
