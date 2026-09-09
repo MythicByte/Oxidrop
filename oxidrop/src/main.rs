@@ -109,7 +109,32 @@ async fn main() -> anyhow::Result<()> {
                 ))
                 .layer(RequestBodyLimitLayer::new(1024 * 1024 * 5)) // 5MB
                 .layer(CompressionLayer::new())
-                .layer(CorsLayer::permissive().max_age(Duration::from_hours(1))),
+                .layer(
+                    CorsLayer::new()
+                        // Explicitly list your frontend development origins
+                        .allow_origin([
+                            "http://127.0.0.1:5173"
+                                .parse::<axum::http::HeaderValue>()
+                                .unwrap(),
+                            "http://localhost:5173"
+                                .parse::<axum::http::HeaderValue>()
+                                .unwrap(),
+                        ])
+                        .allow_methods([
+                            axum::http::Method::GET,
+                            axum::http::Method::POST,
+                            axum::http::Method::PUT,
+                            axum::http::Method::DELETE,
+                            axum::http::Method::OPTIONS,
+                        ])
+                        .allow_headers([
+                            axum::http::header::CONTENT_TYPE,
+                            axum::http::header::AUTHORIZATION,
+                            axum::http::header::ACCEPT,
+                        ])
+                        .allow_credentials(true)
+                        .max_age(Duration::from_hours(1)),
+                ),
         )
         .layer(auth_layer);
     let addr = format!("127.0.0.1:{}", http_port);
@@ -201,7 +226,7 @@ async fn session_store_build() -> anyhow::Result<SessionManagerLayer<RedisStore<
             tower_sessions::cookie::time::Duration::minutes(10),
         ))
         .with_http_only(true)
-        .with_same_site(SameSite::Strict)
-        .with_name("__Host-session");
+        .with_same_site(SameSite::Strict);
+    // .with_name("__Host-session");
     Ok(session_layer)
 }
