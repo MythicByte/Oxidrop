@@ -669,6 +669,40 @@
         ]
       }
     },
+    "/api/v1/users/get_all_user": {
+      "get": {
+        "tags": [
+          "crate::api"
+        ],
+        "operationId": "list_users",
+        "responses": {
+          "200": {
+            "description": "List all users successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/UserRow"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized - User is not logged in or lacks Admin role"
+          },
+          "500": {
+            "description": "Internal server error - Database failure"
+          }
+        },
+        "security": [
+          {
+            "cookie_auth": []
+          }
+        ]
+      }
+    },
     "/api/v1/users/modify_user": {
       "put": {
         "tags": [
@@ -1277,6 +1311,35 @@
             "type": "integer",
             "format": "int64",
             "minimum": 0
+          }
+        }
+      },
+      "UserRow": {
+        "type": "object",
+        "required": [
+          "id",
+          "username",
+          "role",
+          "permissions",
+          "is_active"
+        ],
+        "properties": {
+          "id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "is_active": {
+            "type": "boolean"
+          },
+          "permissions": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "role": {
+            "type": "string"
+          },
+          "username": {
+            "type": "string"
           }
         }
       }

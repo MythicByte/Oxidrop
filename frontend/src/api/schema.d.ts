@@ -236,6 +236,22 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/api/v1/users/get_all_user": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get: operations["list_users"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/api/v1/users/modify_user": {
     parameters: {
       query?: never;
@@ -424,6 +440,15 @@ export interface components {
       last_update: number;
       /** Format: int64 */
       tokens: number;
+    };
+    UserRow: {
+      /** Format: int64 */
+      id: number;
+      is_active: boolean;
+      /** Format: int32 */
+      permissions: number;
+      role: string;
+      username: string;
     };
   };
   responses: never;
@@ -1136,6 +1161,40 @@ export interface operations {
       };
       /** @description Unauthorized */
       401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  list_users: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description List all users successfully */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["UserRow"][];
+        };
+      };
+      /** @description Unauthorized - User is not logged in or lacks Admin role */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Internal server error - Database failure */
+      500: {
         headers: {
           [name: string]: unknown;
         };

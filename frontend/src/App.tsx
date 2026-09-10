@@ -5,6 +5,9 @@ import { ProtectedRoute } from "./router";
 import { Dashboard } from "./components/dashboard";
 import { useEffect, useState } from "react";
 import { client } from "./components/api";
+import { FirewallConfiguration } from "./components/configuration";
+import { UserManagement } from "./components/usermanagement";
+import { DashboardOverview } from "./components/overview";
 
 function App() {
   const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
@@ -12,7 +15,6 @@ function App() {
   useEffect(() => {
     const checkAuth = async () => {
       try {
-        // Ask the Rust backend if our HttpOnly cookie is still valid
         const { response, data } = await client.GET("/api/v1/get_user");
 
         if (response.ok && data) {
@@ -29,6 +31,7 @@ function App() {
 
     checkAuth();
   }, []);
+
   if (isAuthenticated === null) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-background text-foreground">
@@ -50,12 +53,19 @@ function App() {
             : <LoginForm />}
         />
 
+        {/* ALL DASHBOARD ROUTES ARE NOW CLEANLY NESTED UNDER PROTECTED ROUTE */}
         <Route element={<ProtectedRoute isAuthenticated={isAuthenticated} />}>
-          <Route path="/dashboard" element={<Dashboard />} />
           <Route path="/" element={<Navigate to="/dashboard" replace />} />
+
+          <Route path="/dashboard" element={<Dashboard />}>
+            <Route index element={<DashboardOverview />} />
+            <Route path="configuration" element={<FirewallConfiguration />} />
+            <Route path="users" element={<UserManagement />} />
+          </Route>
         </Route>
       </Routes>
     </BrowserRouter>
   );
 }
+
 export default App;
