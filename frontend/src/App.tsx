@@ -1,13 +1,15 @@
 import { BrowserRouter, Navigate, Route, Routes } from "react-router";
 import "./App.css";
 import { LoginForm } from "@/components/login-form";
-import { ProtectedRoute } from "./router";
+import { AdminRoute, ProtectedRoute } from "./router";
 import { Dashboard } from "./components/dashboard";
 import { useEffect, useState } from "react";
 import { client } from "./components/api";
 import { FirewallConfiguration } from "./components/configuration";
 import { UserManagement } from "./components/usermanagement";
 import { DashboardOverview } from "./components/overview";
+import { AllowLists } from "./components/allow-lists";
+import { Logs } from "./components/logs";
 
 function App() {
   const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
@@ -59,8 +61,12 @@ function App() {
 
           <Route path="/dashboard" element={<Dashboard />}>
             <Route index element={<DashboardOverview />} />
+            <Route path="allow-lists" element={<AllowLists />} />
             <Route path="configuration" element={<FirewallConfiguration />} />
             <Route path="users" element={<UserManagement />} />
+            <Route element={<AdminRoute />}>
+              <Route path="logs" element={<Logs />} />
+            </Route>
           </Route>
         </Route>
       </Routes>

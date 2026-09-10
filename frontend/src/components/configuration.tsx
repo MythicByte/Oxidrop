@@ -18,11 +18,15 @@ import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { Network, ShieldAlert } from "lucide-react";
 import { client } from "./api";
+import type { components } from "@/api/schema";
+
+type Config = components["schemas"]["ConfigPatch"];
+type Adapter = components["schemas"]["AdapterInfo"];
+type AdapterResponse = components["schemas"]["AdaptersResponse"];
+
 export function FirewallConfiguration() {
-  const [config, setConfig] = useState<any>(null);
-  const [adapters, setAdapters] = useState<{ index: number; name: string }[]>(
-    [],
-  );
+  const [config, setConfig] = useState<Config>({ ddos_activated: true });
+  const [adapters, setAdapters] = useState<AdapterResponse>({});
   const [permissions, setPermissions] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -41,11 +45,14 @@ export function FirewallConfiguration() {
         if (rbacRes.response.ok && rbacRes.data) {
           setPermissions(rbacRes.data.permissions);
         }
-        if (configRes.response.ok && configRes.data) setConfig(configRes.data);
+        if (configRes.response.ok && configRes.data) {
+          setConfig({
+            ddos_activated: true,
+            ...(configRes.data as unknown as Config),
+          });
+        }
         if (adapterRes.response.ok && adapterRes.data) {
-          setAdapters(
-            adapterRes.data as unknown as { index: number; name: string }[],
-          );
+          setAdapters(adapterRes.data as AdapterResponse);
         }
       } catch (error) {
         console.error("Failed to load firewall state:", error);
@@ -109,23 +116,24 @@ export function FirewallConfiguration() {
               <Label>Incoming Adapter (Ingress)</Label>
               <Select
                 disabled={!hasModify}
-                value={config?.incoming_ethernet_adapter?.toString()}
+                value={config.incoming_ethernet_adapter?.toString() ?? ""}
                 onValueChange={(v) =>
                   setConfig({
                     ...config,
-                    incoming_ethernet_adapter: parseInt(v),
+                    incoming_ethernet_adapter: Number(v),
                   })}
               >
                 <SelectTrigger>
                   <SelectValue placeholder="Select incoming adapter" />
                 </SelectTrigger>
                 <SelectContent>
-                  {Array.isArray(adapters) &&
-                    adapters.map((a) => (
-                      <SelectItem key={a.index} value={a.index.toString()}>
-                        {a.name} (idx: {a.index})
-                      </SelectItem>
-                    ))}
+                  {([adapters.incoming, adapters.output].filter(
+                    (adapter): adapter is Adapter => Boolean(adapter),
+                  )).map((adapter) => (
+                    <SelectItem key={adapter.index} value={adapter.index.toString()}>
+                      {adapter.index} — {adapter.name}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
@@ -134,23 +142,24 @@ export function FirewallConfiguration() {
               <Label>Outgoing Adapter (Egress)</Label>
               <Select
                 disabled={!hasModify}
-                value={config?.output_ethernet_adapter?.toString()}
+                value={config.output_ethernet_adapter?.toString() ?? ""}
                 onValueChange={(v) =>
                   setConfig({
                     ...config,
-                    output_ethernet_adapter: parseInt(v),
+                    output_ethernet_adapter: Number(v),
                   })}
               >
                 <SelectTrigger>
                   <SelectValue placeholder="Select outgoing adapter" />
                 </SelectTrigger>
                 <SelectContent>
-                  {Array.isArray(adapters) &&
-                    adapters.map((a) => (
-                      <SelectItem key={a.index} value={a.index.toString()}>
-                        {a.name} (idx: {a.index})
-                      </SelectItem>
-                    ))}
+                  {([adapters.incoming, adapters.output].filter(
+                    (adapter): adapter is Adapter => Boolean(adapter),
+                  )).map((adapter) => (
+                    <SelectItem key={adapter.index} value={adapter.index.toString()}>
+                      {adapter.index} — {adapter.name}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
@@ -175,7 +184,7 @@ export function FirewallConfiguration() {
               </div>
               <Switch
                 disabled={!hasModify}
-                checked={config?.ddos_activated}
+                checked={config.ddos_activated ?? true}
                 onCheckedChange={(c) =>
                   setConfig({ ...config, ddos_activated: c })}
               />
