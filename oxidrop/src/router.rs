@@ -20,6 +20,7 @@ use crate::{
         RenameUserReq,
         create_user_endpoint,
         delete_user_endpoint,
+        list_users,
         modify_user_endpoint,
         rename_user_endpoint,
     },
@@ -63,6 +64,7 @@ use crate::{
         crate::api::modify_user_endpoint,
         crate::api::rename_user_endpoint,
         crate::api::delete_user_endpoint,
+        crate::api::list_users,
 
         // Config
         crate::state::get_config,
@@ -137,7 +139,8 @@ fn safe_router() -> Router<FirewallState> {
         .route("/create_user", post(create_user_endpoint))
         .route("/modify_user", put(modify_user_endpoint))
         .route("/delete_user", delete(delete_user_endpoint))
-        .route("/rename_user", patch(rename_user_endpoint));
+        .route("/rename_user", patch(rename_user_endpoint))
+        .route("/get_all_user", get(list_users));
 
     Router::new()
         .without_v07_checks()

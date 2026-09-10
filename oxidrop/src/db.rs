@@ -12,6 +12,7 @@ use serde::{
 };
 use sqlx::{
     SqlitePool,
+    prelude::FromRow,
     sqlite::{
         SqliteConnectOptions,
         SqlitePoolOptions,
@@ -20,7 +21,14 @@ use sqlx::{
 use thiserror::Error;
 use tracing::warn;
 use utoipa::ToSchema;
-
+#[derive(Serialize, Deserialize, FromRow, ToSchema)]
+pub struct UserRow {
+    pub id: i64,
+    pub username: String,
+    pub role: String,
+    pub permissions: i32, // Stored as integer for the bitmask
+    pub is_active: bool,
+}
 bitflags! {
     #[derive(Debug, Clone, Copy, PartialEq, Eq,Serialize,Deserialize,)]
     pub struct ActionPermissions: u8 {
@@ -328,6 +336,13 @@ impl Database {
             }
             _ => return Err(UserError::LackingPermission),
         }
+    }
+    pub async fn get_all_users(&self) -> Result<Vec<UserRow>, sqlx::Error> {
+        let query = "SELECT id, username, role, permissions, is_active FROM users ORDER BY id ASC;";
+
+        sqlx::query_as::<_, UserRow>(query)
+            .fetch_all(&self.pool)
+            .await
     }
 }
 #[cfg(test)]

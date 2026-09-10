@@ -16,6 +16,7 @@ use crate::{
         Database,
         RolesUser,
         UserError,
+        UserRow,
     },
     state::FirewallState,
 };
@@ -211,5 +212,42 @@ pub async fn delete_user_endpoint(
     {
         Ok(_) => StatusCode::NO_CONTENT.into_response(),
         Err(e) => map_user_error(e).into_response(),
+    }
+}
+#[utoipa::path(
+    get,
+    path = "/api/v1/users/get_all_user",
+    responses(
+        (status = 200, description = "List all users successfully", body = Vec<UserRow>),
+        (status = 401, description = "Unauthorized - User is not logged in or lacks Admin role"),
+        (status = 500, description = "Internal server error - Database failure")
+    ),
+    security(
+        ("cookie_auth" = [])
+    )
+)]
+pub async fn list_users(
+    State(state): State<FirewallState>,
+    auth_session: AuthSession<Database>,
+) -> Result<Json<Vec<UserRow>>, StatusCode> {
+    let user = match auth_session.user {
+        Some(u) => u,
+        None => return Err(StatusCode::UNAUTHORIZED),
+    };
+
+    let caller = CallerContext {
+        role: user.role,
+        permissions: user.permissions,
+    };
+    if caller.role == RolesUser::Admin {
+        match state.db.get_all_users().await {
+            Ok(users) => Ok(Json(users)),
+            Err(e) => {
+                eprintln!("Database error while fetching users: {}", e);
+                Err(StatusCode::INTERNAL_SERVER_ERROR)
+            }
+        }
+    } else {
+        Err(StatusCode::UNAUTHORIZED)
     }
 }
