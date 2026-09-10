@@ -6,7 +6,6 @@ use axum::{
 use axum_login::AuthSession;
 use hyper::StatusCode;
 use serde::Deserialize;
-use tracing::error;
 use utoipa::ToSchema;
 
 use crate::{
@@ -15,7 +14,6 @@ use crate::{
         CallerContext,
         Database,
         RolesUser,
-        UserError,
         UserRow,
     },
     state::FirewallState,
@@ -48,24 +46,6 @@ pub struct RenameUserReq {
 #[derive(Deserialize, ToSchema)]
 pub struct DeleteUserReq {
     pub target_username: String,
-}
-
-fn map_user_error(err: UserError) -> StatusCode {
-    match err {
-        UserError::UserExists(_) => StatusCode::CONFLICT,
-        UserError::InvalidCredentials => StatusCode::UNAUTHORIZED,
-        UserError::NotFound(_) => StatusCode::NOT_FOUND,
-        UserError::LackingPermission => StatusCode::FORBIDDEN,
-        UserError::WeakPassword(_) | UserError::TooLongPassword(_) => StatusCode::BAD_REQUEST,
-        UserError::Database(e) => {
-            error!("Database error: {}", e);
-            StatusCode::INTERNAL_SERVER_ERROR
-        }
-        UserError::Internal(e) => {
-            error!("Internal error: {}", e);
-            StatusCode::INTERNAL_SERVER_ERROR
-        }
-    }
 }
 
 #[utoipa::path(
@@ -109,7 +89,7 @@ pub async fn create_user_endpoint(
         .await
     {
         Ok(_) => StatusCode::CREATED.into_response(),
-        Err(e) => map_user_error(e).into_response(),
+        Err(e) => e.into_response(),
     }
 }
 
@@ -147,7 +127,7 @@ pub async fn modify_user_endpoint(
         .await
     {
         Ok(_) => StatusCode::OK.into_response(),
-        Err(e) => map_user_error(e).into_response(),
+        Err(e) => e.into_response(),
     }
 }
 
@@ -179,7 +159,7 @@ pub async fn rename_user_endpoint(
         .await
     {
         Ok(_) => StatusCode::OK.into_response(),
-        Err(e) => map_user_error(e).into_response(),
+        Err(e) => e.into_response(),
     }
 }
 
@@ -211,7 +191,7 @@ pub async fn delete_user_endpoint(
         .await
     {
         Ok(_) => StatusCode::NO_CONTENT.into_response(),
-        Err(e) => map_user_error(e).into_response(),
+        Err(e) => e.into_response(),
     }
 }
 #[utoipa::path(

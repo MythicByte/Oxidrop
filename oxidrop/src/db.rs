@@ -5,11 +5,20 @@ use argon2::{
     PasswordHasher,
     password_hash::phc::SaltString,
 };
+use axum::{
+    Json,
+    response::{
+        IntoResponse,
+        Response,
+    },
+};
 use bitflags::bitflags;
+use hyper::StatusCode;
 use serde::{
     Deserialize,
     Serialize,
 };
+use serde_json::json;
 use sqlx::{
     SqlitePool,
     prelude::FromRow,
@@ -659,5 +668,50 @@ mod tests {
             matches!(err_del, UserError::LackingPermission),
             "Delete succeeded without DELETE permission"
         );
+    }
+}
+impl IntoResponse for UserError {
+    fn into_response(self) -> Response {
+        let (status, error_message) = match self {
+            UserError::UserExists(_) => (StatusCode::CONFLICT, "User already exists".to_string()),
+
+            UserError::InvalidCredentials => {
+                (StatusCode::UNAUTHORIZED, "Invalid credentials".to_string())
+            }
+
+            UserError::NotFound(_) => (StatusCode::NOT_FOUND, "User not found".to_string()),
+
+            UserError::LackingPermission => (
+                StatusCode::FORBIDDEN,
+                "Insufficient permissions".to_string(),
+            ),
+
+            UserError::WeakPassword(reason) | UserError::TooLongPassword(reason) => (
+                StatusCode::BAD_REQUEST,
+                format!("Password requirement not met: {}", reason),
+            ),
+
+            UserError::Database(e) => {
+                tracing::error!(error = %e, "Database query failed");
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "An internal server error occurred".to_string(),
+                )
+            }
+
+            UserError::Internal(e) => {
+                tracing::error!(error = %e, "Internal application error");
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "An internal server error occurred".to_string(),
+                )
+            }
+        };
+
+        let body = Json(json!({
+            "error": error_message
+        }));
+
+        (status, body).into_response()
     }
 }

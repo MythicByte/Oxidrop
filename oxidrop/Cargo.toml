@@ -25,6 +25,7 @@ sqlx = { version = "0.9", features = [ "runtime-tokio","sqlite","derive","macros
 thiserror = "2.0.20"
 argon2 = "0.6"
 bitflags = "2.13.1"
+serde_json = "1.0.151"
 
 
 serde = { workspace = true}
@@ -43,7 +44,6 @@ tracing = { workspace = true }
 
 [dev-dependencies]
 etherparse = "0.21.0"
-serde_json = "1.0.151"
 oxidrop-common = { path = "../oxidrop-common",features=["user"] }
 
 
