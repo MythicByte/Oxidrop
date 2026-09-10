@@ -347,7 +347,7 @@ impl Database {
         }
     }
     pub async fn get_all_users(&self) -> Result<Vec<UserRow>, sqlx::Error> {
-        let query = "SELECT id, username, role, permissions, is_active FROM users ORDER BY id ASC;";
+        let query = "SELECT id, username, role, action_permissions AS permissions, is_active FROM users ORDER BY id ASC;";
 
         sqlx::query_as::<_, UserRow>(query)
             .fetch_all(&self.pool)
