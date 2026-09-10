@@ -16,7 +16,7 @@ oxidrop-common = { path = "../oxidrop-common", features = ["user"] }
 tower-sessions = "0.14.0"
 tower-http = { version = "0.7", features = ["fs","trace","catch-panic","timeout","limit","compression-gzip", "compression-br","cors"] }
 clap = { version = "4.5.20", default-features = false, features = ["std","help","error-context","color","derive"] }
-axum = "0.8.9"
+axum = {version = "0.8.9", featues = ["http2"]}
 hyper = "1.10.1"
 hyper-util = "0.1.20"
 tracing-subscriber = { version = "0.3.22", features = ["local-time"] }
