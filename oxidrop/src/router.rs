@@ -32,6 +32,7 @@ use crate::{
     db::{
         Database,
         RolesUser,
+        UserRow,
     },
     state::{
         AllowListV4Update,
@@ -108,7 +109,8 @@ use crate::{
         PacketCountV6Update,
         SubnetMatchV4Update,
         SubnetMatchV6Update,
-        ConfigPatch
+        ConfigPatch,
+        UserRow
     ))
 )]
 pub struct ApiDoc;
