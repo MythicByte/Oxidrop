@@ -115,6 +115,7 @@ pub struct Ipv4Packet {
 }
 
 impl Ipv4Packet {
+    #[must_use]
     #[inline(always)]
     pub fn new(
         source_addr: u32,
@@ -152,6 +153,7 @@ pub struct Ipv6Packet {
 
 impl Ipv6Packet {
     #[inline(always)]
+    #[must_use]
     pub fn new(
         source_addr: [u32; 4],
         destination_addr: [u32; 4],
