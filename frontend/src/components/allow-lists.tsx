@@ -78,7 +78,7 @@ export function AllowLists() {
           <RefreshCw className="size-4" /> Refresh
         </Button>
       </div>
-      <div className="max-w-full scroll-smooth overflow-x-auto rounded-xl border bg-background p-1 shadow-sm [scrollbar-width:thin]">
+      <div className="max-w-full scroll-smooth overflow-x-auto rounded-xl border bg-background p-1 shadow-sm scrollbar-thin">
         <div className="flex w-max gap-2">
           {([
             ["allow-v4", "Allow list IPv4"],
