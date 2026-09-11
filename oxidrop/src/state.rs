@@ -1,9 +1,19 @@
-use std::sync::Arc;
+use std::{
+    fs,
+    sync::Arc,
+};
 
 use axum::{
     Json,
     Router,
-    extract::State,
+    extract::{
+        State,
+        ws::{
+            Message,
+            WebSocket,
+            WebSocketUpgrade,
+        },
+    },
     response::IntoResponse,
     routing::{
         get,
@@ -33,17 +43,26 @@ use serde::{
     Deserialize,
     Serialize,
 };
-use tokio::sync::RwLock;
+use sqlx::FromRow;
+use tokio::sync::{
+    Mutex,
+    RwLock,
+    broadcast,
+};
 use utoipa::ToSchema;
 
 use crate::{
+    Opt,
     db::{
         ActionPermissions,
         CallerContext,
         Database,
         RolesUser,
     },
-    ebpf::get_ebpf_adapters,
+    ebpf::{
+        EbpfProgramm,
+        get_ebpf_adapters,
+    },
 };
 
 /// Firewall internal state
@@ -57,7 +76,216 @@ pub struct FirewallState {
     pub packet_counts_v6: Arc<RwLock<HashMap<MapData, Ipv6Packet, TokenBucketState>>>,
     pub subnet_matching_v4: Arc<RwLock<LpmTrie<MapData, u32, Action>>>,
     pub subnet_matching_v6: Arc<RwLock<LpmTrie<MapData, [u32; 4], Action>>>,
+    pub logs: Arc<LogStore>,
+    pub ebpf: Option<Arc<Mutex<EbpfProgramm>>>,
+    pub opt: Opt,
 }
+
+#[derive(Debug, Clone, Serialize, FromRow, ToSchema)]
+pub struct LogEntry {
+    pub id: i64,
+    pub timestamp: i64,
+    pub level: String,
+    pub message: String,
+    pub actor: Option<String>,
+    pub source_ip: Option<String>,
+    pub destination_ip: Option<String>,
+    pub source_port: Option<i64>,
+    pub destination_port: Option<i64>,
+    pub protocol: Option<String>,
+    pub action: Option<String>,
+}
+
+#[derive(Clone)]
+pub struct LogStore {
+    db: Database,
+    tx: broadcast::Sender<LogEntry>,
+}
+
+impl LogStore {
+    #[must_use]
+    pub fn new(db: Database) -> Self {
+        let (tx, _) = broadcast::channel(256);
+        Self { db, tx }
+    }
+
+    pub async fn record(&self, level: &str, message: &str, actor: Option<&str>) {
+        self.record_details(level, message, actor, None, None, None, None, None, None)
+            .await;
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub async fn record_details(
+        &self,
+        level: &str,
+        message: &str,
+        actor: Option<&str>,
+        source_ip: Option<&str>,
+        destination_ip: Option<&str>,
+        source_port: Option<u16>,
+        destination_port: Option<u16>,
+        protocol: Option<&str>,
+        action: Option<&str>,
+    ) {
+        let result = sqlx::query_as::<_, LogEntry>(
+            "INSERT INTO firewall_logs (
+                timestamp, level, message, actor, source_ip, destination_ip,
+                source_port, destination_port, protocol, action
+             ) VALUES (unixepoch(), ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             RETURNING id, timestamp, level, message, actor, source_ip,
+                       destination_ip, source_port, destination_port, protocol, action",
+        )
+        .bind(level)
+        .bind(message)
+        .bind(actor)
+        .bind(source_ip)
+        .bind(destination_ip)
+        .bind(source_port.map(i64::from))
+        .bind(destination_port.map(i64::from))
+        .bind(protocol)
+        .bind(action)
+        .fetch_one(&self.db.pool)
+        .await;
+
+        match result {
+            Ok(entry) => {
+                let _ = self.tx.send(entry);
+            }
+
+            Err(error) => tracing::error!("failed to persist firewall log: {error}"),
+        }
+    }
+
+    async fn recent(&self) -> Result<Vec<LogEntry>, sqlx::Error> {
+        sqlx::query_as(
+            "SELECT id, timestamp, level, message, actor, source_ip, destination_ip,
+                    source_port, destination_port, protocol, action
+             FROM firewall_logs
+             ORDER BY timestamp DESC, id DESC
+             LIMIT 500",
+        )
+        .fetch_all(&self.db.pool)
+        .await
+    }
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct TrafficCounters {
+    pub packets: u64,
+    pub bytes: u64,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct TrafficStatsResponse {
+    pub incoming: TrafficCounters,
+    pub outgoing: TrafficCounters,
+}
+
+fn interface_name(index: Option<u32>) -> Result<Option<String>, std::io::Error> {
+    let Some(index) = index else {
+        return Ok(None);
+    };
+    Ok(fs::read_dir("/sys/class/net")?
+        .flatten()
+        .find_map(|entry| {
+            let name = entry.file_name().into_string().ok()?;
+            let ifindex = fs::read_to_string(format!("/sys/class/net/{name}/ifindex"))
+                .ok()?
+                .trim()
+                .parse::<u32>()
+                .ok()?;
+            (ifindex == index).then_some(name)
+        }))
+}
+
+fn read_interface_counter(interface: &str, counter: &str) -> Result<u64, std::io::Error> {
+    let value = fs::read_to_string(format!(
+        "/sys/class/net/{interface}/statistics/{counter}"
+    ))?;
+    value.trim().parse().map_err(|error| {
+        std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            format!("invalid {counter} counter for {interface}: {error}"),
+        )
+    })
+}
+
+#[utoipa::path(
+    get,
+    path = "/api/v1/config/traffic",
+    responses((status = 200, description = "Interface traffic counters", body = TrafficStatsResponse)),
+    security(("cookie_auth" = []))
+)]
+pub async fn get_traffic_stats(
+    State(state): State<FirewallState>,
+    auth_session: AuthSession<Database>,
+) -> impl IntoResponse {
+    if auth_session.user.is_none() {
+        return StatusCode::UNAUTHORIZED.into_response();
+    }
+
+    let config = match state.config.read().await.get(&0, 0) {
+        Ok(config) => config,
+        Err(error) => {
+            tracing::error!("failed to read firewall configuration: {error}");
+            return StatusCode::INTERNAL_SERVER_ERROR.into_response();
+        }
+    };
+    let incoming = match interface_name(config.incoming_ethernet_adapter) {
+        Ok(interface) => interface,
+        Err(error) => {
+            tracing::error!("failed to resolve incoming interface: {error}");
+            return StatusCode::SERVICE_UNAVAILABLE.into_response();
+        }
+    };
+    let outgoing = match interface_name(config.output_ethernet_adapter) {
+        Ok(interface) => interface,
+        Err(error) => {
+            tracing::error!("failed to resolve outgoing interface: {error}");
+            return StatusCode::SERVICE_UNAVAILABLE.into_response();
+        }
+    };
+    if config.incoming_ethernet_adapter.is_some() && incoming.is_none() {
+        tracing::error!("configured incoming interface was not found in sysfs");
+        return StatusCode::SERVICE_UNAVAILABLE.into_response();
+    }
+    if config.output_ethernet_adapter.is_some() && outgoing.is_none() {
+        tracing::error!("configured outgoing interface was not found in sysfs");
+        return StatusCode::SERVICE_UNAVAILABLE.into_response();
+    }
+    let counters = |interface: Option<String>,
+                    packets: &str,
+                    bytes: &str|
+     -> Result<Option<TrafficCounters>, std::io::Error> {
+        interface
+            .as_deref()
+            .map(|name| {
+                Ok(TrafficCounters {
+                    packets: read_interface_counter(name, packets)?,
+                    bytes: read_interface_counter(name, bytes)?,
+                })
+            })
+            .transpose()
+    };
+    let incoming = match counters(incoming, "rx_packets", "rx_bytes") {
+        Ok(Some(counters)) => counters,
+        Ok(None) => TrafficCounters { packets: 0, bytes: 0 },
+        Err(error) => {
+            tracing::error!("failed to read incoming traffic counters: {error}");
+            return StatusCode::SERVICE_UNAVAILABLE.into_response();
+        }
+    };
+    let outgoing = match counters(outgoing, "tx_packets", "tx_bytes") {
+        Ok(Some(counters)) => counters,
+        Ok(None) => TrafficCounters { packets: 0, bytes: 0 },
+        Err(error) => {
+            tracing::error!("failed to read outgoing traffic counters: {error}");
+            return StatusCode::SERVICE_UNAVAILABLE.into_response();
+        }
+    };
+    Json(TrafficStatsResponse { incoming, outgoing }).into_response()
+}
+
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct AllowListV4Update {
     pub key: Ipv4Packet,
@@ -111,9 +339,9 @@ pub struct ConfigPatch {
     #[serde(default)]
     pub ddos_activated: Option<bool>,
     #[serde(default)]
-    pub incoming_ethernet_adapter: Option<u32>,
+    pub incoming_ethernet_adapter: Option<Option<u32>>,
     #[serde(default)]
-    pub output_ethernet_adapter: Option<u32>,
+    pub output_ethernet_adapter: Option<Option<u32>>,
 }
 
 const MAX_RATE_SHIFT: u64 = 63;
@@ -154,10 +382,10 @@ impl ConfigPatch {
             cfg.ddos_activated = activated;
         }
         if let Some(adapter) = self.incoming_ethernet_adapter {
-            cfg.incoming_ethernet_adapter = Some(adapter);
+            cfg.incoming_ethernet_adapter = adapter;
         }
         if let Some(adapter) = self.output_ethernet_adapter {
-            cfg.output_ethernet_adapter = Some(adapter);
+            cfg.output_ethernet_adapter = adapter;
         }
     }
 }
@@ -177,6 +405,62 @@ pub async fn get_config(State(state): State<FirewallState>) -> impl IntoResponse
             "CONFIG map not initialized",
         )
             .into_response(),
+    }
+}
+
+#[utoipa::path(
+    get,
+    path = "/api/v1/logs",
+    responses((status = 200, description = "Recent firewall log entries", body = [LogEntry])),
+    security(("cookie_auth" = []))
+)]
+pub async fn get_logs(
+    State(state): State<FirewallState>,
+    auth_session: AuthSession<Database>,
+) -> impl IntoResponse {
+    if !auth_session
+        .user
+        .as_ref()
+        .is_some_and(|user| user.role == RolesUser::Admin)
+    {
+        return StatusCode::FORBIDDEN.into_response();
+    }
+
+    match state.logs.recent().await {
+        Ok(entries) => Json(entries).into_response(),
+        Err(error) => {
+            tracing::error!("failed to read firewall logs: {error}");
+            StatusCode::INTERNAL_SERVER_ERROR.into_response()
+        }
+    }
+}
+
+pub async fn log_websocket(
+    ws: WebSocketUpgrade,
+    State(state): State<FirewallState>,
+    auth_session: AuthSession<Database>,
+) -> impl IntoResponse {
+    if !auth_session
+        .user
+        .as_ref()
+        .is_some_and(|user| user.role == RolesUser::Admin)
+    {
+        return StatusCode::FORBIDDEN.into_response();
+    }
+
+    let receiver = state.logs.tx.subscribe();
+    ws.on_upgrade(move |socket| stream_logs(socket, receiver))
+        .into_response()
+}
+
+async fn stream_logs(mut socket: WebSocket, mut receiver: broadcast::Receiver<LogEntry>) {
+    while let Ok(entry) = receiver.recv().await {
+        let Ok(message) = serde_json::to_string(&entry) else {
+            continue;
+        };
+        if socket.send(Message::Text(message.into())).await.is_err() {
+            break;
+        }
     }
 }
 
@@ -204,7 +488,7 @@ pub async fn update_config(
     };
 
     let caller = CallerContext {
-        role: user.role,
+        role: user.role.clone(),
         permissions: user.permissions,
     };
     if caller.role == RolesUser::Admin && caller.permissions.contains(ActionPermissions::MODIFY) {
@@ -226,14 +510,84 @@ pub async fn update_config(
 
         patch.apply(&mut cfg);
 
-        if config.set(0, &cfg, 0).is_err() {
+        if let Some(ebpf) = &state.ebpf {
+            let mut ebpf = ebpf.lock().await;
+            if let Err(error) = ebpf.reboot(&cfg, &state.opt) {
+                tracing::error!("failed to attach eBPF adapters: {error}");
+                cfg.incoming_ethernet_adapter = None;
+                cfg.output_ethernet_adapter = None;
+                if let Err(clear_error) = config.set(0, cfg, 0) {
+                    tracing::error!(
+                        "failed to clear adapters after eBPF attach failure: {clear_error}"
+                    );
+                }
+                if let Err(clear_error) = state.db.save_firewall_config(&cfg).await {
+                    tracing::error!(
+                        "failed to persist cleared adapters after eBPF attach failure: {clear_error}"
+                    );
+                }
+                state
+                    .logs
+                    .record(
+                        "ERROR",
+                        &format!("Failed to attach eBPF adapters: {error}"),
+                        Some(&user.username),
+                    )
+                    .await;
+                return (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "Failed to attach eBPF program to the selected adapters",
+                )
+                    .into_response();
+            }
+            let (incoming, output) = ebpf.attached_adapters();
+            let attached = [incoming, output]
+                .into_iter()
+                .flatten()
+                .map(|index| index.to_string())
+                .collect::<Vec<_>>()
+                .join(", ");
+            state
+                .logs
+                .record(
+                    "INFO",
+                    &format!(
+                        "eBPF interface attachment succeeded{}",
+                        if attached.is_empty() {
+                            String::new()
+                        } else {
+                            format!(": {attached}")
+                        }
+                    ),
+                    Some(&user.username),
+                )
+                .await;
+        }
+
+        if config.set(0, cfg, 0).is_err() {
             return (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 "Failed to update CONFIG map",
             )
                 .into_response();
         }
+        if let Err(error) = state.db.save_firewall_config(&cfg).await {
+            tracing::error!("failed to persist firewall configuration: {error}");
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Failed to persist firewall configuration",
+            )
+                .into_response();
+        }
 
+        state
+            .logs
+            .record(
+                "INFO",
+                "Firewall configuration updated",
+                Some(&user.username),
+            )
+            .await;
         Json(cfg).into_response()
     } else {
         StatusCode::UNAUTHORIZED.into_response()
@@ -250,10 +604,8 @@ pub async fn get_allow_list_v4(State(state): State<FirewallState>) -> impl IntoR
     let map = state.allow_list_v4.read().await;
 
     let mut entries = Vec::with_capacity(4096);
-    for item in map.iter() {
-        if let Ok((key, value)) = item {
-            entries.push((key, value));
-        }
+    for (key, value) in map.iter().flatten() {
+        entries.push((key, value));
     }
 
     Json(entries).into_response()
@@ -277,13 +629,13 @@ pub async fn modify_allow_list_v4(
     };
 
     let caller = CallerContext {
-        role: user.role,
+        role: user.role.clone(),
         permissions: user.permissions,
     };
     if caller.role == RolesUser::Admin && caller.permissions.contains(ActionPermissions::MODIFY) {
         let mut map = state.allow_list_v4.write().await;
 
-        if map.insert(&payload.key, &payload.state, 0).is_err() {
+        if map.insert(payload.key, payload.state, 0).is_err() {
             return (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 "Failed to insert into ALLOW_LIST_V4 map",
@@ -320,10 +672,8 @@ pub async fn clear_allow_list_v4(
         let mut map = state.allow_list_v4.write().await;
 
         let mut keys_to_remove = Vec::with_capacity(4096);
-        for item in map.iter() {
-            if let Ok((key, _)) = item {
-                keys_to_remove.push(key);
-            }
+        for (key, _) in map.iter().flatten() {
+            keys_to_remove.push(key);
         }
 
         for key in keys_to_remove {
@@ -347,10 +697,8 @@ pub async fn get_allow_list_v6(State(state): State<FirewallState>) -> impl IntoR
     let map = state.allow_list_v6.read().await;
 
     let mut entries = Vec::with_capacity(4096);
-    for item in map.iter() {
-        if let Ok((key, value)) = item {
-            entries.push((key, value));
-        }
+    for (key, value) in map.iter().flatten() {
+        entries.push((key, value));
     }
 
     Json(entries).into_response()
@@ -381,7 +729,7 @@ pub async fn modify_allow_list_v6(
     if caller.role == RolesUser::Admin && caller.permissions.contains(ActionPermissions::MODIFY) {
         let mut map = state.allow_list_v6.write().await;
 
-        if map.insert(&payload.key, &payload.state, 0).is_err() {
+        if map.insert(payload.key, payload.state, 0).is_err() {
             return (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 "Failed to insert into ALLOW_LIST_V6 map",
@@ -419,10 +767,8 @@ pub async fn clear_allow_list_v6(
         let mut map = state.allow_list_v6.write().await;
 
         let mut keys_to_remove = Vec::with_capacity(4096);
-        for item in map.iter() {
-            if let Ok((key, _)) = item {
-                keys_to_remove.push(key);
-            }
+        for (key, _) in map.iter().flatten() {
+            keys_to_remove.push(key);
         }
 
         for key in keys_to_remove {
@@ -445,10 +791,8 @@ pub async fn get_packet_counts_v4(State(state): State<FirewallState>) -> impl In
     let map = state.packet_counts_v4.read().await;
 
     let mut entries = Vec::with_capacity(4096);
-    for item in map.iter() {
-        if let Ok((key, value)) = item {
-            entries.push((key, value));
-        }
+    for (key, value) in map.iter().flatten() {
+        entries.push((key, value));
     }
     Json(entries).into_response()
 }
@@ -477,7 +821,7 @@ pub async fn modify_packet_counts_v4(
     if caller.role == RolesUser::Admin && caller.permissions.contains(ActionPermissions::MODIFY) {
         let mut map = state.packet_counts_v4.write().await;
 
-        if map.insert(&payload.key, &payload.state, 0).is_err() {
+        if map.insert(payload.key, payload.state, 0).is_err() {
             return (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 "Failed to insert into PACKET_COUNTS_V4 map",
@@ -513,10 +857,8 @@ pub async fn clear_packet_counts_v4(
         let mut map = state.packet_counts_v4.write().await;
 
         let mut keys_to_remove = Vec::with_capacity(4096);
-        for item in map.iter() {
-            if let Ok((key, _)) = item {
-                keys_to_remove.push(key);
-            }
+        for (key, _) in map.iter().flatten() {
+            keys_to_remove.push(key);
         }
         for key in keys_to_remove {
             let _ = map.remove(&key);
@@ -536,10 +878,8 @@ pub async fn get_packet_counts_v6(State(state): State<FirewallState>) -> impl In
     let map = state.packet_counts_v6.read().await;
 
     let mut entries = Vec::with_capacity(4096);
-    for item in map.iter() {
-        if let Ok((key, value)) = item {
-            entries.push((key, value));
-        }
+    for (key, value) in map.iter().flatten() {
+        entries.push((key, value));
     }
     Json(entries).into_response()
 }
@@ -568,7 +908,7 @@ pub async fn modify_packet_counts_v6(
     if caller.role == RolesUser::Admin && caller.permissions.contains(ActionPermissions::MODIFY) {
         let mut map = state.packet_counts_v6.write().await;
 
-        if map.insert(&payload.key, &payload.state, 0).is_err() {
+        if map.insert(payload.key, payload.state, 0).is_err() {
             return (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 "Failed to insert into PACKET_COUNTS_V6 map",
@@ -605,10 +945,8 @@ pub async fn clear_packet_counts_v6(
         let mut map = state.packet_counts_v6.write().await;
 
         let mut keys_to_remove = Vec::with_capacity(4096);
-        for item in map.iter() {
-            if let Ok((key, _)) = item {
-                keys_to_remove.push(key);
-            }
+        for (key, _) in map.iter().flatten() {
+            keys_to_remove.push(key);
         }
         for key in keys_to_remove {
             let _ = map.remove(&key);
@@ -806,6 +1144,9 @@ pub fn config_router() -> Router<FirewallState> {
     Router::new()
         .route("/", get(get_config).post(update_config))
         .route("/adapters", get(get_ebpf_adapters))
+        .route("/ebpf/shutdown", post(shutdown_ebpf))
+        .route("/ebpf/restart", post(restart_ebpf))
+        .route("/traffic", get(get_traffic_stats))
         .route(
             "/allow_list/v4",
             get(get_allow_list_v4)
@@ -842,6 +1183,94 @@ pub fn config_router() -> Router<FirewallState> {
         )
 }
 
+async fn authorized_ebpf_action(
+    state: &FirewallState,
+    auth_session: &AuthSession<Database>,
+) -> Result<crate::auth::AppUser, StatusCode> {
+    let user = auth_session.user.clone().ok_or(StatusCode::UNAUTHORIZED)?;
+    let caller = CallerContext {
+        role: user.role.clone(),
+        permissions: user.permissions,
+    };
+    if caller.role != RolesUser::Admin || !caller.permissions.contains(ActionPermissions::MODIFY) {
+        return Err(StatusCode::UNAUTHORIZED);
+    }
+    if state.ebpf.is_none() {
+        return Err(StatusCode::SERVICE_UNAVAILABLE);
+    }
+    Ok(user)
+}
+
+pub async fn shutdown_ebpf(
+    State(state): State<FirewallState>,
+    auth_session: AuthSession<Database>,
+) -> impl IntoResponse {
+    let user = match authorized_ebpf_action(&state, &auth_session).await {
+        Ok(user) => user,
+        Err(status) => return status.into_response(),
+    };
+    let ebpf = state.ebpf.as_ref().expect("checked above");
+    let mut ebpf = ebpf.lock().await;
+    if let Err(error) = ebpf.shut_down_working_ebpf() {
+        state
+            .logs
+            .record(
+                "ERROR",
+                &format!("eBPF shutdown failed: {error}"),
+                Some(&user.username),
+            )
+            .await;
+        return (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "Failed to shut down eBPF",
+        )
+            .into_response();
+    }
+    state
+        .logs
+        .record("INFO", "eBPF program shut down", Some(&user.username))
+        .await;
+    StatusCode::NO_CONTENT.into_response()
+}
+
+pub async fn restart_ebpf(
+    State(state): State<FirewallState>,
+    auth_session: AuthSession<Database>,
+) -> impl IntoResponse {
+    let user = match authorized_ebpf_action(&state, &auth_session).await {
+        Ok(user) => user,
+        Err(status) => return status.into_response(),
+    };
+    let config_map = state.config.write().await;
+    let cfg = match config_map.get(&0, 0) {
+        Ok(cfg) => cfg,
+        Err(_) => {
+            return (StatusCode::INTERNAL_SERVER_ERROR, "CONFIG map unavailable").into_response();
+        }
+    };
+    let ebpf = state.ebpf.as_ref().expect("checked above");
+    let mut ebpf = ebpf.lock().await;
+    if cfg.incoming_ethernet_adapter.is_none() && cfg.output_ethernet_adapter.is_none() {
+        return StatusCode::NO_CONTENT.into_response();
+    }
+    if let Err(error) = ebpf.reboot(&cfg, &state.opt) {
+        state
+            .logs
+            .record(
+                "ERROR",
+                &format!("eBPF restart failed: {error}"),
+                Some(&user.username),
+            )
+            .await;
+        return (StatusCode::INTERNAL_SERVER_ERROR, "Failed to restart eBPF").into_response();
+    }
+    state
+        .logs
+        .record("INFO", "eBPF program restarted", Some(&user.username))
+        .await;
+    StatusCode::NO_CONTENT.into_response()
+}
+
 #[cfg(test)]
 mod tests {
     use axum::{
@@ -863,7 +1292,7 @@ mod tests {
     async fn create_test_state() -> FirewallState {
         let mut config_map = Array::<MapData, FirewallConfig>::create(1, 0).unwrap();
         let default_config = FirewallConfig::default();
-        config_map.set(0, &default_config, 0).unwrap();
+        config_map.set(0, default_config, 0).unwrap();
 
         let allow_list_v4 =
             HashMap::<MapData, Ipv4Packet, AllowListState>::create(4096, 0).unwrap();
@@ -877,13 +1306,19 @@ mod tests {
             LpmTrie::<MapData, u32, Action>::create(2048, BPF_F_NO_PREALLOC).unwrap();
         let subnet_matching_v6 =
             LpmTrie::<MapData, [u32; 4], Action>::create(2048, BPF_F_NO_PREALLOC).unwrap();
-
         // Actually initialize an in-memory database instead of pretending it implements Default
         let db = crate::db::Database::new("sqlite::memory:")
             .await
             .expect("Failed to create test DB");
 
         FirewallState {
+            logs: Arc::new(LogStore::new(db.clone())),
+            ebpf: None,
+            opt: Opt {
+                http_port: 0,
+                incoming_adapter: None,
+                output_adapter: None,
+            },
             db,
             config: Arc::new(RwLock::new(config_map)),
             allow_list_v4: Arc::new(RwLock::new(allow_list_v4)),
@@ -924,6 +1359,7 @@ mod tests {
             role: RolesUser::Admin,
             permissions: ActionPermissions::MODIFY | ActionPermissions::DELETE,
             password_hash: "dummy_hash".to_string(),
+            password_must_be_changed: false,
         });
 
         let role_str = match app_user.role {
@@ -1081,8 +1517,9 @@ mod tests {
         assert_eq!(status, StatusCode::OK);
         let entries: Vec<(Ipv4Packet, AllowListState)> = serde_json::from_str(&body).unwrap();
         assert_eq!(entries.len(), 1);
-        assert_eq!(entries[0].0.source_addr, 16843264);
-        assert_eq!(entries[0].1.action, Action::Allow);
+        let entry = entries.first().expect("allow-list entry should exist");
+        assert_eq!(entry.0.source_addr, 16843264);
+        assert_eq!(entry.1.action, Action::Allow);
 
         let (status, _) =
             make_request(state.clone(), Method::DELETE, "/allow_list/v4", None, None).await;
@@ -1169,7 +1606,8 @@ mod tests {
         assert_eq!(status, StatusCode::OK);
         let entries: Vec<(Ipv4Packet, TokenBucketState)> = serde_json::from_str(&body).unwrap();
         assert_eq!(entries.len(), 1);
-        assert_eq!(entries[0].1.tokens, 100);
+        let entry = entries.first().expect("packet-count entry should exist");
+        assert_eq!(entry.1.tokens, 100);
 
         let (status, _) = make_request(
             state.clone(),
@@ -1321,8 +1759,9 @@ mod tests {
         assert_eq!(status, StatusCode::OK);
         let entries: Vec<(Ipv6Packet, AllowListState)> = serde_json::from_str(&body).unwrap();
         assert_eq!(entries.len(), 1);
-        assert_eq!(entries[0].0.source_addr, [16843264, 0, 0, 1]);
-        assert_eq!(entries[0].1.action, Action::Allow);
+        let entry = entries.first().expect("allow-list entry should exist");
+        assert_eq!(entry.0.source_addr, [16843264, 0, 0, 1]);
+        assert_eq!(entry.1.action, Action::Allow);
 
         let (status, _) =
             make_request(state.clone(), Method::DELETE, "/allow_list/v6", None, None).await;
@@ -1409,7 +1848,8 @@ mod tests {
         assert_eq!(status, StatusCode::OK);
         let entries: Vec<(Ipv6Packet, TokenBucketState)> = serde_json::from_str(&body).unwrap();
         assert_eq!(entries.len(), 1);
-        assert_eq!(entries[0].1.tokens, 100);
+        let entry = entries.first().expect("packet-count entry should exist");
+        assert_eq!(entry.1.tokens, 100);
 
         let (status, _) = make_request(
             state.clone(),
