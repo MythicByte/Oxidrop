@@ -1,15 +1,16 @@
 import { BrowserRouter, Navigate, Route, Routes } from "react-router";
 import "./App.css";
-import { LoginForm } from "@/components/login-form";
-import { AdminRoute, ProtectedRoute } from "./router";
-import { Dashboard } from "./components/dashboard";
+import { LoginForm } from "./components/login-form.tsx";
+import { AdminRoute, ProtectedRoute } from "./router.tsx";
+import { Dashboard } from "./components/dashboard.tsx";
 import { useEffect, useState } from "react";
-import { client } from "./components/api";
-import { FirewallConfiguration } from "./components/configuration";
-import { UserManagement } from "./components/usermanagement";
-import { DashboardOverview } from "./components/overview";
-import { AllowLists } from "./components/allow-lists";
-import { Logs } from "./components/logs";
+import { client } from "./components/api.tsx";
+import { FirewallConfiguration } from "./components/configuration.tsx";
+import { UserManagement } from "./components/usermanagement.tsx";
+import { DashboardOverview } from "./components/overview.tsx";
+import { AllowLists } from "./components/allow-lists.tsx";
+import { Logs } from "./components/logs.tsx";
+import { ChangePassword } from "./components/change-password.tsx";
 
 function App() {
   const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
@@ -22,6 +23,13 @@ function App() {
         if (response.ok && data) {
           setIsAuthenticated(true);
           localStorage.setItem("username", data.username);
+          if (
+            data.password_must_be_changed &&
+            globalThis.location.pathname !== "/change-password"
+          ) {
+            globalThis.location.replace("/change-password");
+            return;
+          }
         } else {
           setIsAuthenticated(false);
         }
@@ -58,6 +66,7 @@ function App() {
         {/* ALL DASHBOARD ROUTES ARE NOW CLEANLY NESTED UNDER PROTECTED ROUTE */}
         <Route element={<ProtectedRoute isAuthenticated={isAuthenticated} />}>
           <Route path="/" element={<Navigate to="/dashboard" replace />} />
+          <Route path="/change-password" element={<ChangePassword />} />
 
           <Route path="/dashboard" element={<Dashboard />}>
             <Route index element={<DashboardOverview />} />
