@@ -55,13 +55,26 @@ pub struct EbpfProgramm {
     outcoming_adapter: Option<u32>,
     incoming_adapter: Option<u32>,
 }
+
+type EbpfMaps = (
+    aya::maps::Array<aya::maps::MapData, oxidrop_common::FirewallConfig>,
+    aya::maps::HashMap<aya::maps::MapData, oxidrop_common::Ipv4Packet, AllowListState>,
+    aya::maps::HashMap<aya::maps::MapData, oxidrop_common::Ipv6Packet, AllowListState>,
+    aya::maps::HashMap<aya::maps::MapData, oxidrop_common::Ipv4Packet, TokenBucketState>,
+    aya::maps::HashMap<aya::maps::MapData, oxidrop_common::Ipv6Packet, TokenBucketState>,
+    aya::maps::LpmTrie<aya::maps::MapData, u32, oxidrop_common::Action>,
+    aya::maps::LpmTrie<aya::maps::MapData, [u32; 4], oxidrop_common::Action>,
+);
+
 impl EbpfProgramm {
+    #[must_use]
     pub fn enforcement_active(&self) -> bool {
         self.programm_loaded.len() == 2
             && self.incoming_adapter.is_some()
             && self.outcoming_adapter.is_some()
     }
 
+    #[must_use]
     pub fn attached_adapters(&self) -> (Option<u32>, Option<u32>) {
         (self.incoming_adapter, self.outcoming_adapter)
     }
@@ -170,15 +183,7 @@ impl EbpfProgramm {
     }
     pub fn get_maps(
         &mut self,
-    ) -> anyhow::Result<(
-        aya::maps::Array<aya::maps::MapData, oxidrop_common::FirewallConfig>,
-        aya::maps::HashMap<aya::maps::MapData, oxidrop_common::Ipv4Packet, AllowListState>,
-        aya::maps::HashMap<aya::maps::MapData, oxidrop_common::Ipv6Packet, AllowListState>,
-        aya::maps::HashMap<aya::maps::MapData, oxidrop_common::Ipv4Packet, TokenBucketState>,
-        aya::maps::HashMap<aya::maps::MapData, oxidrop_common::Ipv6Packet, TokenBucketState>,
-        aya::maps::LpmTrie<aya::maps::MapData, u32, oxidrop_common::Action>,
-        aya::maps::LpmTrie<aya::maps::MapData, [u32; 4], oxidrop_common::Action>,
-    )> {
+    ) -> anyhow::Result<EbpfMaps> {
         let ebpf = &mut self.ebpf;
         let config_map: aya::maps::Array<aya::maps::MapData, oxidrop_common::FirewallConfig> =
             Array::try_from(ebpf.take_map("CONFIG").context("CONFIG map not found")?)?;
