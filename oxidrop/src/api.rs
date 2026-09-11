@@ -3,7 +3,10 @@ use axum::{
     extract::State,
     response::IntoResponse,
 };
-use axum_login::AuthSession;
+use axum_login::{
+    AuthSession,
+    AuthnBackend,
+};
 use hyper::StatusCode;
 use serde::Deserialize;
 use utoipa::ToSchema;
@@ -24,17 +27,19 @@ pub struct CreateUserReq {
     pub username: String,
     pub password: String,
     pub role: RolesUser,
-    #[schema(value_type = u8)]
+    #[schema(value_type = String)]
     pub permissions: ActionPermissions,
+    pub password_must_be_changed: bool,
 }
 
 #[derive(Deserialize, ToSchema)]
 pub struct ModifyUserReq {
     pub target_username: String,
     pub role: RolesUser,
-    #[schema(value_type = u8)]
+    #[schema(value_type = String)]
     pub permissions: ActionPermissions,
     pub is_active: i64,
+    pub password: Option<String>,
 }
 
 #[derive(Deserialize, ToSchema)]
@@ -46,6 +51,58 @@ pub struct RenameUserReq {
 #[derive(Deserialize, ToSchema)]
 pub struct DeleteUserReq {
     pub target_username: String,
+}
+
+#[derive(Deserialize, ToSchema)]
+pub struct ChangePasswordReq {
+    pub password: String,
+}
+
+#[utoipa::path(
+    post,
+    path = "/api/v1/change_password",
+    request_body = ChangePasswordReq,
+    responses(
+        (status = 204, description = "Password changed"),
+        (status = 401, description = "Unauthorized"),
+        (status = 409, description = "Password changed; sign in again")
+    )
+)]
+pub async fn change_password_endpoint(
+    State(state): State<FirewallState>,
+    mut auth_session: AuthSession<Database>,
+    Json(payload): Json<ChangePasswordReq>,
+) -> impl IntoResponse {
+    let current_user = match auth_session.user.as_ref() {
+        Some(user) => user.clone(),
+        None => return StatusCode::UNAUTHORIZED.into_response(),
+    };
+    match state
+        .db
+        .change_password(current_user.id, &payload.password)
+        .await
+    {
+        Ok(()) => {
+            let refreshed_user = match auth_session.backend.get_user(&current_user.id).await {
+                Ok(Some(user)) => user,
+                Ok(None) => return StatusCode::UNAUTHORIZED.into_response(),
+                Err(error) => {
+                    tracing::error!("password changed but user reload failed: {error}");
+                    return StatusCode::INTERNAL_SERVER_ERROR.into_response();
+                }
+            };
+            if let Err(error) = auth_session.login(&refreshed_user).await {
+                tracing::error!("password changed but session login failed: {error}");
+                return (
+                    StatusCode::CONFLICT,
+                    "Password changed. Please sign in again.",
+                )
+                    .into_response();
+            }
+            StatusCode::NO_CONTENT.into_response()
+        }
+        Err(error) => error.into_response(),
+    }
 }
 
 #[utoipa::path(
@@ -85,6 +142,7 @@ pub async fn create_user_endpoint(
             &payload.password,
             payload.role,
             payload.permissions,
+            payload.password_must_be_changed,
         )
         .await
     {
@@ -123,6 +181,7 @@ pub async fn modify_user_endpoint(
             payload.role,
             payload.permissions,
             payload.is_active,
+            payload.password.as_deref(),
         )
         .await
     {
@@ -211,23 +270,18 @@ pub async fn list_users(
     auth_session: AuthSession<Database>,
 ) -> Result<Json<Vec<UserRow>>, StatusCode> {
     let user = match auth_session.user {
-        Some(u) => u,
+        Some(user) => user,
         None => return Err(StatusCode::UNAUTHORIZED),
     };
+    if user.role != RolesUser::Admin {
+        return Err(StatusCode::FORBIDDEN);
+    }
 
-    let caller = CallerContext {
-        role: user.role,
-        permissions: user.permissions,
-    };
-    if caller.role == RolesUser::Admin {
-        match state.db.get_all_users().await {
-            Ok(users) => Ok(Json(users)),
-            Err(e) => {
-                eprintln!("Database error while fetching users: {}", e);
-                Err(StatusCode::INTERNAL_SERVER_ERROR)
-            }
+    match state.db.get_all_users().await {
+        Ok(users) => Ok(Json(users)),
+        Err(e) => {
+            eprintln!("Database error while fetching users: {}", e);
+            Err(StatusCode::INTERNAL_SERVER_ERROR)
         }
-    } else {
-        Err(StatusCode::UNAUTHORIZED)
     }
 }
