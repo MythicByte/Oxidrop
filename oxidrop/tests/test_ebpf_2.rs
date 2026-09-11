@@ -112,8 +112,12 @@ fn build_ipv6_with_hopopt(
 
 fn build_truncated_ipv4() -> Vec<u8> {
     let mut data = vec![0u8; 14];
-    data[12] = 0x08;
-    data[13] = 0x00;
+    *data
+        .get_mut(12)
+        .expect("truncated packet should contain an Ethernet type") = 0x08;
+    *data
+        .get_mut(13)
+        .expect("truncated packet should contain an Ethernet type") = 0x00;
     data
 }
 

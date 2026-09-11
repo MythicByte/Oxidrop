@@ -32,7 +32,14 @@ pub struct XdpTestHarness {
     pub ebpf: Ebpf,
 }
 
+impl Default for XdpTestHarness {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl XdpTestHarness {
+    #[must_use]
     pub fn new() -> Self {
         let mut ebpf = Ebpf::load(aya::include_bytes_aligned!(concat!(
             env!("OUT_DIR"),
@@ -234,8 +241,12 @@ fn build_arp_packet() -> Vec<u8> {
 fn test_malformed_packet_aborts() {
     let mut harness = XdpTestHarness::new();
     let mut truncated_data = vec![0u8; 14];
-    truncated_data[12] = 0x08;
-    truncated_data[13] = 0x00;
+    *truncated_data
+        .get_mut(12)
+        .expect("truncated packet should contain an Ethernet type") = 0x08;
+    *truncated_data
+        .get_mut(13)
+        .expect("truncated packet should contain an Ethernet type") = 0x00;
     truncated_data.extend_from_slice(&[0x45, 0x00]);
     assert_eq!(harness.run_packet(&truncated_data), XDP_ABORTED);
 }
