@@ -16,13 +16,66 @@ import {
 } from "./ui/select.tsx";
 import { Switch } from "./ui/switch.tsx";
 import { Label } from "./ui/label.tsx";
-import { Network, Power, RotateCw, ShieldAlert } from "lucide-react";
+import { Input } from "./ui/input.tsx";
+import {
+  Network,
+  Plus,
+  Power,
+  RotateCw,
+  ShieldAlert,
+  Trash2,
+} from "lucide-react";
 import { client } from "./api.tsx";
 import type { components } from "../api/schema.d.ts";
 
 type Config = components["schemas"]["ConfigPatch"];
 type AdapterResponse = components["schemas"]["AdaptersResponse"];
 type TrafficStats = components["schemas"]["TrafficStatsResponse"];
+type SubnetAction = components["schemas"]["Action"];
+
+interface SubnetV4Rule {
+  network: number;
+  prefix_len: number;
+  action: SubnetAction;
+  address: string;
+}
+
+interface SubnetV6Rule {
+  network: number[];
+  prefix_len: number;
+  action: SubnetAction;
+  address: string;
+}
+
+function parseIpv4(value: string): number | null {
+  const octets = value.split(".");
+  if (octets.length !== 4) return null;
+  const parsed = octets.map(Number);
+  if (
+    parsed.some((octet) =>
+      !Number.isInteger(octet) || octet < 0 || octet > 255
+    )
+  ) return null;
+  return parsed.reduce((network, octet) => network * 256 + octet, 0);
+}
+
+function parseIpv6(value: string): number[] | null {
+  const parts = value.split("::");
+  if (parts.length > 2) return null;
+  const left = parts[0] ? parts[0].split(":") : [];
+  const right = parts[1] ? parts[1].split(":") : [];
+  const missing = 8 - left.length - right.length;
+  if ((parts.length === 1 && missing !== 0) || missing < 0) return null;
+  const groups = [...left, ...Array(missing).fill("0"), ...right];
+  const values = groups.map((group) => Number.parseInt(group, 16));
+  if (
+    values.length !== 8 ||
+    values.some((group) => !Number.isInteger(group) || group < 0 || group > 0xffff)
+  ) return null;
+  return [0, 2, 4, 6].map((offset) =>
+    values[offset] * 0x10000 + values[offset + 1]
+  );
+}
 
 function formatBytes(value: number): string {
   if (value < 1024) return `${value} B`;
@@ -38,6 +91,14 @@ export function FirewallConfiguration() {
     enforcement_active: false,
   });
   const [permissions, setPermissions] = useState<string[]>([]);
+  const [subnetV4Rules, setSubnetV4Rules] = useState<SubnetV4Rule[]>([]);
+  const [subnetV6Rules, setSubnetV6Rules] = useState<SubnetV6Rule[]>([]);
+  const [subnetV4Address, setSubnetV4Address] = useState("");
+  const [subnetV6Address, setSubnetV6Address] = useState("");
+  const [subnetV4Prefix, setSubnetV4Prefix] = useState("24");
+  const [subnetV6Prefix, setSubnetV6Prefix] = useState("64");
+  const [subnetV4Action, setSubnetV4Action] = useState<SubnetAction>("Allow");
+  const [subnetV6Action, setSubnetV6Action] = useState<SubnetAction>("Allow");
   const [isLoading, setIsLoading] = useState(true);
   const [attachmentNotice, setAttachmentNotice] = useState<
     { kind: "success" | "error"; message: string } | null
@@ -120,10 +181,68 @@ export function FirewallConfiguration() {
     };
   }, []);
 
+  const addSubnetV4 = async () => {
+        const network = parseIpv4(subnetV4Address);
+        const prefix_len = Number(subnetV4Prefix);
+        if (network === null || !Number.isInteger(prefix_len) || prefix_len < 0 || prefix_len > 32) {
+          setAttachmentNotice({ kind: "error", message: "Enter a valid IPv4 network and prefix length." });
+          return;
+        }
+        const rule = { network, prefix_len, action: subnetV4Action };
+        const { response } = await client.POST("/api/v1/config/subnet/v4", { body: rule });
+        if (!response.ok) {
+          setAttachmentNotice({ kind: "error", message: "Failed to add the IPv4 subnet rule." });
+          return;
+        }
+        setSubnetV4Rules((current) => [
+          ...current.filter((item) => !(item.network === network && item.prefix_len === prefix_len)),
+          { ...rule, address: subnetV4Address },
+        ]);
+        setSubnetV4Address("");
+  };
+
+  const addSubnetV6 = async () => {
+        const network = parseIpv6(subnetV6Address);
+        const prefix_len = Number(subnetV6Prefix);
+        if (network === null || !Number.isInteger(prefix_len) || prefix_len < 0 || prefix_len > 128) {
+          setAttachmentNotice({ kind: "error", message: "Enter a valid IPv6 network and prefix length." });
+          return;
+        }
+        const rule = { network, prefix_len, action: subnetV6Action };
+        const { response } = await client.POST("/api/v1/config/subnet/v6", { body: rule });
+        if (!response.ok) {
+          setAttachmentNotice({ kind: "error", message: "Failed to add the IPv6 subnet rule." });
+          return;
+        }
+        setSubnetV6Rules((current) => [
+          ...current.filter((item) =>
+            !(item.network.every((word, index) => word === network[index]) &&
+              item.prefix_len === prefix_len)
+          ),
+          { ...rule, address: subnetV6Address },
+        ]);
+        setSubnetV6Address("");
+  };
+
+  const removeSubnetV4 = async (rule: SubnetV4Rule) => {
+        const { response } = await client.DELETE("/api/v1/config/subnet/v4", {
+          body: { network: rule.network, prefix_len: rule.prefix_len, action: rule.action },
+        });
+        if (response.ok) setSubnetV4Rules((current) => current.filter((item) => item !== rule));
+  };
+
+  const removeSubnetV6 = async (rule: SubnetV6Rule) => {
+        const { response } = await client.DELETE("/api/v1/config/subnet/v6", {
+          body: { network: rule.network, prefix_len: rule.prefix_len, action: rule.action },
+        });
+        if (response.ok) setSubnetV6Rules((current) => current.filter((item) => item !== rule));
+  };
+
   const handleSave = async () => {
     try {
       const payload = {
         ddos_activated: config.ddos_activated,
+        subnet_activated: config.subnet_activated,
         incoming_ethernet_adapter: config.incoming_ethernet_adapter,
         output_ethernet_adapter: config.output_ethernet_adapter,
       };
@@ -524,8 +643,8 @@ export function FirewallConfiguration() {
             </CardTitle>
             <CardDescription>Global security policies.</CardDescription>
           </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="flex items-center justify-between rounded-lg border p-4">
+          <CardContent className="space-y-3">
+            <div className="flex items-center justify-between rounded-lg border p-2.5">
               <div className="space-y-0.5">
                 <Label className="text-base">DDoS Protection</Label>
                 <p className="text-sm text-muted-foreground">
@@ -538,6 +657,122 @@ export function FirewallConfiguration() {
                 onCheckedChange={(c) =>
                   setConfig({ ...config, ddos_activated: c })}
               />
+            </div>
+            <div className="flex items-center justify-between rounded-lg border p-2.5">
+              <div className="space-y-0.5">
+                <Label className="text-base">Subnet Matching</Label>
+                <p className="text-sm text-muted-foreground">
+                  Enforce IPv4 and IPv6 subnet rules.
+                </p>
+              </div>
+              <Switch
+                disabled={!hasModify}
+                checked={config.subnet_activated ?? true}
+                onCheckedChange={(checked) =>
+                  setConfig({ ...config, subnet_activated: checked })}
+              />
+            </div>
+            <div className="space-y-4 rounded-lg border p-3">
+              <div>
+                <Label className="text-base">IPv4 subnets</Label>
+                <p className="text-sm text-muted-foreground">
+                  Add a CIDR network. Adding an existing network modifies it.
+                </p>
+              </div>
+              <div className="grid gap-2 sm:grid-cols-[1fr_90px_110px_auto]">
+                <Input
+                  value={subnetV4Address}
+                  disabled={!hasModify}
+                  onChange={(event) => setSubnetV4Address(event.target.value)}
+                  placeholder="192.168.1.0"
+                  aria-label="IPv4 network"
+                />
+                <Input
+                  value={subnetV4Prefix}
+                  disabled={!hasModify}
+                  onChange={(event) => setSubnetV4Prefix(event.target.value)}
+                  placeholder="24"
+                  aria-label="IPv4 prefix length"
+                  type="number"
+                  min={0}
+                  max={32}
+                />
+                <Select
+                  disabled={!hasModify}
+                  value={subnetV4Action}
+                  onValueChange={(value) => setSubnetV4Action(value as SubnetAction)}
+                >
+                  <SelectTrigger aria-label="IPv4 subnet action">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="Allow">Allow</SelectItem>
+                    <SelectItem value="Deny">Deny</SelectItem>
+                  </SelectContent>
+                </Select>
+                <Button type="button" disabled={!hasModify} onClick={() => void addSubnetV4()}>
+                  <Plus className="size-4" /> Add
+                </Button>
+              </div>
+              {subnetV4Rules.map((rule) => (
+                <div key={`${rule.network}/${rule.prefix_len}`} className="flex items-center justify-between rounded border px-3 py-2 text-sm">
+                  <span>{rule.address}/{rule.prefix_len} · {rule.action}</span>
+                  <Button type="button" variant="ghost" disabled={!hasModify} onClick={() => void removeSubnetV4(rule)} aria-label={`Delete IPv4 subnet ${rule.address}`}>
+                    <Trash2 className="size-4" />
+                  </Button>
+                </div>
+              ))}
+            </div>
+            <div className="space-y-4 rounded-lg border p-3">
+              <div>
+                <Label className="text-base">IPv6 subnets</Label>
+                <p className="text-sm text-muted-foreground">
+                  Add a CIDR network. Adding an existing network modifies it.
+                </p>
+              </div>
+              <div className="grid gap-2 sm:grid-cols-[1fr_90px_110px_auto]">
+                <Input
+                  value={subnetV6Address}
+                  disabled={!hasModify}
+                  onChange={(event) => setSubnetV6Address(event.target.value)}
+                  placeholder="2001:db8::"
+                  aria-label="IPv6 network"
+                />
+                <Input
+                  value={subnetV6Prefix}
+                  disabled={!hasModify}
+                  onChange={(event) => setSubnetV6Prefix(event.target.value)}
+                  placeholder="64"
+                  aria-label="IPv6 prefix length"
+                  type="number"
+                  min={0}
+                  max={128}
+                />
+                <Select
+                  disabled={!hasModify}
+                  value={subnetV6Action}
+                  onValueChange={(value) => setSubnetV6Action(value as SubnetAction)}
+                >
+                  <SelectTrigger aria-label="IPv6 subnet action">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="Allow">Allow</SelectItem>
+                    <SelectItem value="Deny">Deny</SelectItem>
+                  </SelectContent>
+                </Select>
+                <Button type="button" disabled={!hasModify} onClick={() => void addSubnetV6()}>
+                  <Plus className="size-4" /> Add
+                </Button>
+              </div>
+              {subnetV6Rules.map((rule) => (
+                <div key={`${rule.address}/${rule.prefix_len}`} className="flex items-center justify-between rounded border px-3 py-2 text-sm">
+                  <span>{rule.address}/{rule.prefix_len} · {rule.action}</span>
+                  <Button type="button" variant="ghost" disabled={!hasModify} onClick={() => void removeSubnetV6(rule)} aria-label={`Delete IPv6 subnet ${rule.address}`}>
+                    <Trash2 className="size-4" />
+                  </Button>
+                </div>
+              ))}
             </div>
           </CardContent>
         </Card>
