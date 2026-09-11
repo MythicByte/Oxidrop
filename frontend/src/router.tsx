@@ -1,6 +1,6 @@
 import { Navigate, Outlet } from "react-router";
 import { useEffect, useState } from "react";
-import { client } from "./components/api";
+import { client } from "./components/api.tsx";
 
 interface ProtectedRouteProps {
   isAuthenticated: boolean;
@@ -25,9 +25,11 @@ export function AdminRoute() {
 
   useEffect(() => {
     let active = true;
-    void client.GET("/api/v1/role_and_permissions").then(({ response, data }) => {
-      if (active) setIsAdmin(response.ok && data?.role === "Admin");
-    }).catch((error: unknown) => {
+    void client.GET("/api/v1/role_and_permissions").then(
+      ({ response, data }) => {
+        if (active) setIsAdmin(response.ok && data?.role === "Admin");
+      },
+    ).catch((error: unknown) => {
       console.error("Failed to verify administrator access:", error);
       if (active) setIsAdmin(false);
     });
