@@ -181,9 +181,7 @@ impl EbpfProgramm {
         }
         Ok(())
     }
-    pub fn get_maps(
-        &mut self,
-    ) -> anyhow::Result<EbpfMaps> {
+    pub fn get_maps(&mut self) -> anyhow::Result<EbpfMaps> {
         let ebpf = &mut self.ebpf;
         let config_map: aya::maps::Array<aya::maps::MapData, oxidrop_common::FirewallConfig> =
             Array::try_from(ebpf.take_map("CONFIG").context("CONFIG map not found")?)?;

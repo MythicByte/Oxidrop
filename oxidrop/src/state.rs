@@ -185,23 +185,19 @@ fn interface_name(index: Option<u32>) -> Result<Option<String>, std::io::Error> 
     let Some(index) = index else {
         return Ok(None);
     };
-    Ok(fs::read_dir("/sys/class/net")?
-        .flatten()
-        .find_map(|entry| {
-            let name = entry.file_name().into_string().ok()?;
-            let ifindex = fs::read_to_string(format!("/sys/class/net/{name}/ifindex"))
-                .ok()?
-                .trim()
-                .parse::<u32>()
-                .ok()?;
-            (ifindex == index).then_some(name)
-        }))
+    Ok(fs::read_dir("/sys/class/net")?.flatten().find_map(|entry| {
+        let name = entry.file_name().into_string().ok()?;
+        let ifindex = fs::read_to_string(format!("/sys/class/net/{name}/ifindex"))
+            .ok()?
+            .trim()
+            .parse::<u32>()
+            .ok()?;
+        (ifindex == index).then_some(name)
+    }))
 }
 
 fn read_interface_counter(interface: &str, counter: &str) -> Result<u64, std::io::Error> {
-    let value = fs::read_to_string(format!(
-        "/sys/class/net/{interface}/statistics/{counter}"
-    ))?;
+    let value = fs::read_to_string(format!("/sys/class/net/{interface}/statistics/{counter}"))?;
     value.trim().parse().map_err(|error| {
         std::io::Error::new(
             std::io::ErrorKind::InvalidData,
@@ -269,7 +265,10 @@ pub async fn get_traffic_stats(
     };
     let incoming = match counters(incoming, "rx_packets", "rx_bytes") {
         Ok(Some(counters)) => counters,
-        Ok(None) => TrafficCounters { packets: 0, bytes: 0 },
+        Ok(None) => TrafficCounters {
+            packets: 0,
+            bytes: 0,
+        },
         Err(error) => {
             tracing::error!("failed to read incoming traffic counters: {error}");
             return StatusCode::SERVICE_UNAVAILABLE.into_response();
@@ -277,7 +276,10 @@ pub async fn get_traffic_stats(
     };
     let outgoing = match counters(outgoing, "tx_packets", "tx_bytes") {
         Ok(Some(counters)) => counters,
-        Ok(None) => TrafficCounters { packets: 0, bytes: 0 },
+        Ok(None) => TrafficCounters {
+            packets: 0,
+            bytes: 0,
+        },
         Err(error) => {
             tracing::error!("failed to read outgoing traffic counters: {error}");
             return StatusCode::SERVICE_UNAVAILABLE.into_response();

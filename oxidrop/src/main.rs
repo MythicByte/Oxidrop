@@ -241,9 +241,10 @@ fn spawn_cleanup_connection_map_after_10_minutes(state: FirewallState) {
                 let mut keys_to_remove = Vec::new();
                 for entry in v4_map.iter() {
                     if let Ok((key, state_val)) = entry
-                        && current_bpf_time.saturating_sub(state_val.last_seen) > TIMEOUT_NS {
-                            keys_to_remove.push(key);
-                        }
+                        && current_bpf_time.saturating_sub(state_val.last_seen) > TIMEOUT_NS
+                    {
+                        keys_to_remove.push(key);
+                    }
                 }
                 for key in keys_to_remove {
                     let _ = v4_map.remove(&key);
@@ -256,9 +257,10 @@ fn spawn_cleanup_connection_map_after_10_minutes(state: FirewallState) {
                 let mut v6_keys_to_remove = Vec::new();
                 for entry in v6_map.iter() {
                     if let Ok((key, state_val)) = entry
-                        && current_bpf_time.saturating_sub(state_val.last_seen) > TIMEOUT_NS {
-                            v6_keys_to_remove.push(key);
-                        }
+                        && current_bpf_time.saturating_sub(state_val.last_seen) > TIMEOUT_NS
+                    {
+                        v6_keys_to_remove.push(key);
+                    }
                 }
                 for key in v6_keys_to_remove {
                     let _ = v6_map.remove(&key);

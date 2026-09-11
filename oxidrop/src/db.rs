@@ -208,9 +208,7 @@ impl Database {
                 .filter(|value| *value <= 63)
                 .ok_or_else(|| invalid(field))
         };
-        let burst = |value: i64, field: &str| {
-            u64::try_from(value).map_err(|_| invalid(field))
-        };
+        let burst = |value: i64, field: &str| u64::try_from(value).map_err(|_| invalid(field));
         let adapter = |value: Option<i64>, field: &str| {
             value
                 .map(|value| u32::try_from(value).map_err(|_| invalid(field)))
@@ -590,8 +588,8 @@ impl Database {
              FROM users
              ORDER BY id ASC"#
         )
-            .fetch_all(&self.pool)
-            .await
+        .fetch_all(&self.pool)
+        .await
     }
 }
 impl IntoResponse for UserError {
@@ -649,7 +647,6 @@ mod tests {
     async fn setup_test_db() -> Database {
         // We use a memory database so tests run fast and isolated.
         // The create_if_missing flag in Database::new will handle this seamlessly.
-
 
         Database::new("sqlite::memory:")
             .await
