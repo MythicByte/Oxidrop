@@ -341,6 +341,8 @@ pub struct ConfigPatch {
     #[serde(default)]
     pub ddos_activated: Option<bool>,
     #[serde(default)]
+    pub subnet_activated: Option<bool>,
+    #[serde(default)]
     pub incoming_ethernet_adapter: Option<Option<u32>>,
     #[serde(default)]
     pub output_ethernet_adapter: Option<Option<u32>>,
@@ -382,6 +384,9 @@ impl ConfigPatch {
         }
         if let Some(activated) = self.ddos_activated {
             cfg.ddos_activated = activated;
+        }
+        if let Some(activated) = self.subnet_activated {
+            cfg.subnet_activated = activated;
         }
         if let Some(adapter) = self.incoming_ethernet_adapter {
             cfg.incoming_ethernet_adapter = adapter;
