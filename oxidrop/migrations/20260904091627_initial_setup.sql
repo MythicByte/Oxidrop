@@ -24,6 +24,22 @@ CREATE TABLE users (
     created_at INTEGER NOT NULL DEFAULT (unixepoch())
 );
 
+CREATE TABLE firewall_logs (
+    id INTEGER PRIMARY KEY,
+    timestamp INTEGER NOT NULL CHECK (timestamp > 0),
+    level TEXT NOT NULL CHECK (level IN ('DEBUG', 'INFO', 'WARN', 'ERROR', 'FATAL')),
+    message TEXT NOT NULL,
+    actor TEXT,
+    source_ip TEXT CHECK (source_ip IS NULL OR length(source_ip) BETWEEN 7 AND 45),
+    destination_ip TEXT CHECK (destination_ip IS NULL OR length(destination_ip) BETWEEN 7 AND 45),
+    source_port INTEGER CHECK (source_port IS NULL OR (source_port >= 0 AND source_port <= 65535)),
+    destination_port INTEGER CHECK (destination_port IS NULL OR (destination_port >= 0 AND destination_port <= 65535)),
+    protocol TEXT CHECK (protocol IS NULL OR protocol IN ('TCP', 'UDP', 'ICMP', 'IGMP', 'GRE', 'IPv6-ICMP')),
+    action TEXT CHECK (action IS NULL OR action IN ('ALLOW', 'DENY', 'DROP', 'REJECT'))
+) STRICT;
+
+CREATE INDEX idx_firewall_logs_timestamp ON firewall_logs(timestamp DESC);
+
 CREATE TABLE firewall_config (
     id INTEGER PRIMARY KEY,
     name TEXT NOT NULL UNIQUE,
