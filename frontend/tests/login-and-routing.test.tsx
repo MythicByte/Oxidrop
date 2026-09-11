@@ -100,6 +100,7 @@ describe("LoginForm", () => {
   });
 
   it("reports a network error and re-enables the form", async () => {
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
     clientMock.POST.mockRejectedValue(new TypeError("Failed to fetch"));
     render(
       <MemoryRouter>
@@ -121,6 +122,10 @@ describe("LoginForm", () => {
       );
     });
     expect(screen.getByRole("button", { name: "Sign In" })).toBeEnabled();
+    expect(consoleError).toHaveBeenCalledWith(
+      "Login request failed:",
+      expect.any(TypeError),
+    );
   });
 
   it("does not redirect when the new session cannot be verified", async () => {
