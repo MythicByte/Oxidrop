@@ -223,6 +223,7 @@ unsafe impl aya::Pod for AllowListState {}
 
 impl From<EtherType> for ActivaterEtherTypes {
     fn from(value: EtherType) -> Self {
+        #[allow(clippy::wildcard_enum_match_arm)]
         match value {
             EtherType::Loop => Self::LOOP,
             EtherType::Ipv4 => Self::IPV4,
