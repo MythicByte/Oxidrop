@@ -1018,6 +1018,12 @@
             "format": "int32",
             "minimum": 0
           },
+          "subnet_activated": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
           "tcp_profile": {
             "oneOf": [
               {
