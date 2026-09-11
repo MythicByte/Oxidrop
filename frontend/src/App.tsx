@@ -60,15 +60,21 @@ function App() {
           path="/login"
           element={isAuthenticated
             ? <Navigate to="/dashboard" replace />
-            : <LoginForm />}
+            : <LoginForm onAuthenticated={() => setIsAuthenticated(true)} />}
         />
 
         {/* ALL DASHBOARD ROUTES ARE NOW CLEANLY NESTED UNDER PROTECTED ROUTE */}
         <Route element={<ProtectedRoute isAuthenticated={isAuthenticated} />}>
           <Route path="/" element={<Navigate to="/dashboard" replace />} />
-          <Route path="/change-password" element={<ChangePassword />} />
+          <Route
+            path="/change-password"
+            element={<ChangePassword onLogout={() => setIsAuthenticated(false)} />}
+          />
 
-          <Route path="/dashboard" element={<Dashboard />}>
+          <Route
+            path="/dashboard"
+            element={<Dashboard onLogout={() => setIsAuthenticated(false)} />}
+          >
             <Route index element={<DashboardOverview />} />
             <Route path="allow-lists" element={<AllowLists />} />
             <Route path="configuration" element={<FirewallConfiguration />} />

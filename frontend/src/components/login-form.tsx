@@ -1,5 +1,6 @@
 import { useState } from "react";
 import type { SubmitEvent } from "react";
+import { useNavigate } from "react-router";
 import { Eye, EyeOff } from "lucide-react";
 import { Button } from "./ui/button.tsx";
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card.tsx";
@@ -7,7 +8,12 @@ import { Input } from "./ui/input.tsx";
 import { Label } from "./ui/label.tsx";
 import { client } from "./api.tsx";
 
-export function LoginForm() {
+interface LoginFormProps {
+  onAuthenticated?: () => void;
+}
+
+export function LoginForm({ onAuthenticated }: LoginFormProps) {
+  const navigate = useNavigate();
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
@@ -46,11 +52,19 @@ export function LoginForm() {
       credentials: "include",
     });
     const user = userResponse.ok
-      ? await userResponse.json() as { password_must_be_changed?: boolean }
+      ? await userResponse.json() as {
+        username?: string;
+        password_must_be_changed?: boolean;
+      }
       : null;
-    globalThis.location.href = user?.password_must_be_changed
-      ? "/change-password"
-      : "/dashboard";
+    if (user?.username) {
+      localStorage.setItem("username", user.username);
+    }
+    onAuthenticated?.();
+    navigate(
+      user?.password_must_be_changed ? "/change-password" : "/dashboard",
+      { replace: true },
+    );
   };
 
   return (
@@ -98,7 +112,9 @@ export function LoginForm() {
               </div>
             </div>
             {error && (
-              <p className="text-sm font-medium text-destructive">{error}</p>
+              <p role="alert" className="text-sm font-medium text-destructive">
+                {error}
+              </p>
             )}
             <Button type="submit" className="w-full" disabled={isLoading}>
               {isLoading ? "Signing In..." : "Sign In"}

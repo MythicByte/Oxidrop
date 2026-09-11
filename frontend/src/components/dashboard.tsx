@@ -24,7 +24,11 @@ const navigation = [
   { label: "Configuration", to: "/dashboard/configuration", icon: Settings },
 ];
 
-export function Dashboard() {
+interface DashboardProps {
+  onLogout?: () => void;
+}
+
+export function Dashboard({ onLogout }: DashboardProps) {
   const navigate = useNavigate();
   const username = localStorage.getItem("username") || "Operator";
   const [isMenuOpen, setIsMenuOpen] = useState(false);
@@ -114,7 +118,8 @@ export function Dashboard() {
       console.error("Failed to cleanly logout from server:", error);
     } finally {
       localStorage.removeItem("username");
-      globalThis.location.replace("/login");
+      onLogout?.();
+      navigate("/login", { replace: true });
     }
   };
 

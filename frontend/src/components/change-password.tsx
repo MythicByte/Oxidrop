@@ -1,10 +1,16 @@
 import { useState } from "react";
 import type { SubmitEvent } from "react";
+import { useNavigate } from "react-router";
 import { Eye, EyeOff, KeyRound, LogOut } from "lucide-react";
 import { Button } from "./ui/button.tsx";
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card.tsx";
 
-export function ChangePassword() {
+interface ChangePasswordProps {
+  onLogout?: () => void;
+}
+
+export function ChangePassword({ onLogout }: ChangePasswordProps) {
+  const navigate = useNavigate();
   const [password, setPassword] = useState("");
   const [confirmation, setConfirmation] = useState("");
   const [visible, setVisible] = useState(false);
@@ -25,7 +31,8 @@ export function ChangePassword() {
     } catch (reason) {
       console.error("Logout request failed:", reason);
     } finally {
-      globalThis.location.replace("/login");
+      onLogout?.();
+      navigate("/login", { replace: true });
     }
   }
 
@@ -51,7 +58,8 @@ export function ChangePassword() {
       if (!response.ok) {
         const message = await response.text();
         if (response.status === 409) {
-          globalThis.location.href = "/login";
+          onLogout?.();
+          navigate("/login", { replace: true });
           return;
         }
         setError(
@@ -59,7 +67,7 @@ export function ChangePassword() {
         );
         return;
       }
-      globalThis.location.href = "/dashboard";
+      navigate("/dashboard", { replace: true });
     } catch (reason) {
       setError(
         reason instanceof Error ? reason.message : "Unable to change password.",
