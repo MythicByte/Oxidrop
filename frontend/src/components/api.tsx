@@ -1,4 +1,4 @@
-import type { paths } from "@/api/schema";
+import type { paths } from "../api/schema.d.ts";
 import createClient from "openapi-fetch";
 
 export const client = createClient<paths>({
