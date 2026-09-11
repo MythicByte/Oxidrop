@@ -20,7 +20,7 @@ import { client } from "./api.tsx";
 
 const navigation = [
   { label: "Overview", to: "/dashboard", icon: LayoutDashboard, end: true },
-  { label: "Allow lists", to: "/dashboard/allow-lists", icon: Network },
+  { label: "Lists", to: "/dashboard/allow-lists", icon: Network },
   { label: "Configuration", to: "/dashboard/configuration", icon: Settings },
 ];
 
