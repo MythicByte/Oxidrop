@@ -1,4 +1,7 @@
-use std::mem;
+use std::{
+    fs,
+    mem,
+};
 
 use anyhow::Context;
 use axum::{
@@ -53,6 +56,16 @@ pub struct EbpfProgramm {
     incoming_adapter: Option<u32>,
 }
 impl EbpfProgramm {
+    pub fn enforcement_active(&self) -> bool {
+        self.programm_loaded.len() == 2
+            && self.incoming_adapter.is_some()
+            && self.outcoming_adapter.is_some()
+    }
+
+    pub fn attached_adapters(&self) -> (Option<u32>, Option<u32>) {
+        (self.incoming_adapter, self.outcoming_adapter)
+    }
+
     pub fn new() -> anyhow::Result<EbpfProgramm> {
         // This will include your eBPF object file as raw bytes at compile-time and load it at
         // runtime. This approach is recommended for most real-world use cases. If you would
@@ -114,30 +127,42 @@ impl EbpfProgramm {
         self.incoming_adapter = None;
         Ok(())
     }
-    pub fn reboot(&mut self, config: &FirewallConfig, opt: &Opt) -> anyhow::Result<()> {
+    pub fn reboot(&mut self, config: &FirewallConfig, _opt: &Opt) -> anyhow::Result<()> {
         self.shut_down_working_ebpf()?;
-        let incoming = opt.incoming_adapter.or(config.incoming_ethernet_adapter);
+        let incoming = config.incoming_ethernet_adapter;
 
         if let Some(if_index) = incoming {
             let link_id = {
                 let xdp = self.xdp()?;
-                let id = xdp.attach_to_if_index(if_index, XdpMode::Default)?;
-                info!("XDP program attached to incoming adapter: {}", if_index);
-                id
+                xdp.attach_to_if_index(if_index, XdpMode::Default)
             };
+            let link_id = match link_id {
+                Ok(id) => id,
+                Err(error) => {
+                    self.shut_down_working_ebpf()?;
+                    return Err(error.into());
+                }
+            };
+            info!("XDP program attached to incoming adapter: {}", if_index);
             self.incoming_adapter = Some(if_index);
             self.programm_loaded.push(link_id);
         }
 
-        let output = opt.output_adapter.or(config.output_ethernet_adapter);
+        let output = config.output_ethernet_adapter;
 
         if let Some(if_index) = output {
             let link_id = {
                 let xdp = self.xdp()?;
-                let id = xdp.attach_to_if_index(if_index, XdpMode::Default)?;
-                info!("XDP program attached to output adapter: {}", if_index);
-                id
+                xdp.attach_to_if_index(if_index, XdpMode::Default)
             };
+            let link_id = match link_id {
+                Ok(id) => id,
+                Err(error) => {
+                    self.shut_down_working_ebpf()?;
+                    return Err(error.into());
+                }
+            };
+            info!("XDP program attached to output adapter: {}", if_index);
             self.outcoming_adapter = Some(if_index);
             self.programm_loaded.push(link_id);
         }
@@ -238,8 +263,10 @@ pub struct AdapterInfo {
 
 #[derive(Debug, Serialize, ToSchema)]
 pub struct AdaptersResponse {
+    pub available: Vec<AdapterInfo>,
     pub incoming: Option<AdapterInfo>,
     pub output: Option<AdapterInfo>,
+    pub enforcement_active: bool,
 }
 #[utoipa::path(
     get,
@@ -259,17 +286,40 @@ pub async fn get_ebpf_adapters(
         return StatusCode::UNAUTHORIZED.into_response();
     }
 
-    let cfg = match state.config.read().await.get(&0, 0) {
-        Ok(cfg) => cfg,
-        Err(e) => {
-            tracing::error!("Failed to retrieve CONFIG map: {}", e);
-            return (StatusCode::INTERNAL_SERVER_ERROR, "CONFIG map unavailable").into_response();
+    let mut available = fs::read_dir("/sys/class/net")
+        .ok()
+        .into_iter()
+        .flatten()
+        .filter_map(|entry| {
+            let name = entry.ok()?.file_name().into_string().ok()?;
+            let index = fs::read_to_string(format!("/sys/class/net/{name}/ifindex"))
+                .ok()?
+                .trim()
+                .parse()
+                .ok()?;
+            Some(AdapterInfo { index, name })
+        })
+        .collect::<Vec<_>>();
+    available.sort_by_key(|adapter| adapter.index);
+
+    let (incoming, output, enforcement_active) = match &state.ebpf {
+        Some(ebpf) => {
+            let ebpf = ebpf.lock().await;
+            let (incoming_index, output_index) = ebpf.attached_adapters();
+            (
+                incoming_index.map(resolve_iface),
+                output_index.map(resolve_iface),
+                ebpf.enforcement_active(),
+            )
         }
+        None => (None, None, false),
     };
 
     let response = AdaptersResponse {
-        incoming: cfg.incoming_ethernet_adapter.map(resolve_iface),
-        output: cfg.output_ethernet_adapter.map(resolve_iface),
+        available,
+        incoming,
+        output,
+        enforcement_active,
     };
 
     (StatusCode::OK, Json(response)).into_response()
