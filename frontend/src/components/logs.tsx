@@ -91,7 +91,7 @@ export function Logs() {
                 </p>
               </div>
             </div>
-            <div className="max-w-full scroll-smooth overflow-x-auto rounded-md border bg-muted/40 p-1 [scrollbar-width:thin]">
+            <div className="max-w-full scroll-smooth overflow-x-auto rounded-md border bg-muted/40 p-1 scrollbar-thin">
               <div className="flex w-max gap-1">
                 {levels.map((value) => (
                   <button
