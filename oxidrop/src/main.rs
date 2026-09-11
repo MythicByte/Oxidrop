@@ -12,7 +12,6 @@ use oxidrop::{
     Opt,
     db::{
         self,
-        Database,
     },
     ebpf::EbpfProgramm,
     router::combined_router,
@@ -80,6 +79,9 @@ async fn main() -> anyhow::Result<()> {
     ) = ebpf_programm.get_maps()?;
 
     let db = db::Database::new("sqlite://oxidrop.db").await?;
+    db.bootstrap_default_admin()
+        .await
+        .context("Failed to bootstrap the default admin user")?;
     let persisted_firewall_config = db.load_firewall_config().await?;
     let mut firewall_config = persisted_firewall_config.unwrap_or_default();
     if persisted_firewall_config.is_none() {
@@ -95,9 +97,6 @@ async fn main() -> anyhow::Result<()> {
     db.save_firewall_config(&firewall_config)
         .await
         .context("Failed to persist firewall configuration")?;
-
-    let db_cloned = db.clone();
-    spawn_db_default_user(db_cloned);
 
     let state = FirewallState {
         db: db.clone(),
@@ -219,13 +218,6 @@ async fn main() -> anyhow::Result<()> {
 fn get_bpf_ktime_ns() -> u64 {
     let ts = clock_gettime(ClockId::Monotonic);
     (ts.tv_sec as u64) * 1_000_000_000 + (ts.tv_nsec as u64)
-}
-fn spawn_db_default_user(db: Database) {
-    tokio::spawn(async move {
-        if let Err(e) = db.bootstrap_default_admin().await {
-            error!("Failed to bootstrap default admin: {}", e);
-        }
-    });
 }
 /// cleanup old connection after 10 Minutes
 fn spawn_cleanup_connection_map_after_10_minutes(state: FirewallState) {
