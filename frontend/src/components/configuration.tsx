@@ -201,6 +201,13 @@ export function FirewallConfiguration() {
 
   if (isLoading) return <div className="p-6">Loading eBPF state...</div>;
 
+  const selectedIncoming = adapters.available?.find(
+    (a) => a.index === config.incoming_ethernet_adapter,
+  );
+  const selectedOutgoing = adapters.available?.find(
+    (a) => a.index === config.output_ethernet_adapter,
+  );
+
   return (
     <div className="p-6 space-y-6">
       <div>
@@ -262,7 +269,13 @@ export function FirewallConfiguration() {
                   })}
               >
                 <SelectTrigger className="rounded-md">
-                  <SelectValue placeholder="Select incoming adapter" />
+                  {selectedIncoming
+                    ? (
+                      <span>
+                        {selectedIncoming.index} {selectedIncoming.name}
+                      </span>
+                    )
+                    : <SelectValue placeholder="Select incoming adapter" />}
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="none">None</SelectItem>
@@ -271,7 +284,7 @@ export function FirewallConfiguration() {
                       key={adapter.index}
                       value={adapter.index.toString()}
                     >
-                      {adapter.index} — {adapter.name}
+                      {adapter.index} {adapter.name}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -290,7 +303,13 @@ export function FirewallConfiguration() {
                   })}
               >
                 <SelectTrigger className="rounded-md">
-                  <SelectValue placeholder="Select outgoing adapter" />
+                  {selectedOutgoing
+                    ? (
+                      <span>
+                        {selectedOutgoing.index} {selectedOutgoing.name}
+                      </span>
+                    )
+                    : <SelectValue placeholder="Select outgoing adapter" />}
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="none">None</SelectItem>
@@ -299,7 +318,7 @@ export function FirewallConfiguration() {
                       key={adapter.index}
                       value={adapter.index.toString()}
                     >
-                      {adapter.index} — {adapter.name}
+                      {adapter.index} {adapter.name}
                     </SelectItem>
                   ))}
                 </SelectContent>
