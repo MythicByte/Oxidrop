@@ -1,5 +1,21 @@
+use std::net::SocketAddr;
+
 use axum::{
     Router,
+    extract::{
+        ConnectInfo,
+        Request,
+        State,
+    },
+    middleware::{
+        Next,
+        from_fn,
+        from_fn_with_state,
+    },
+    response::{
+        IntoResponse,
+        Response,
+    },
     routing::{
         delete,
         get,
@@ -8,8 +24,14 @@ use axum::{
         put,
     },
 };
-use axum_login::login_required;
-use tower_http::services::ServeDir;
+use axum_login::{
+    AuthSession,
+    login_required,
+};
+use tower_http::services::{
+    ServeDir,
+    ServeFile,
+};
 use utoipa::OpenApi;
 
 use crate::{
@@ -43,6 +65,8 @@ use crate::{
         PacketCountV6Update,
         SubnetMatchV4Update,
         SubnetMatchV6Update,
+        TrafficCounters,
+        TrafficStatsResponse,
         config_router,
     },
 };
@@ -70,6 +94,8 @@ use crate::{
         // Config
         crate::state::get_config,
         crate::state::update_config,
+        crate::state::get_traffic_stats,
+        crate::state::get_logs,
         crate::ebpf::get_ebpf_adapters,
 
         // Allow Lists
@@ -110,7 +136,9 @@ use crate::{
         SubnetMatchV4Update,
         SubnetMatchV6Update,
         ConfigPatch,
-        UserRow
+        UserRow,
+        TrafficCounters,
+        TrafficStatsResponse
     ))
 )]
 pub struct ApiDoc;
@@ -121,8 +149,47 @@ pub fn combined_router(state: FirewallState) -> Router {
     // .merge(unsafe_router());
     Router::new()
         .nest("/api/v1", router)
-        .fallback_service(ServeDir::new("frontend/dist"))
+        // BrowserRouter routes do not exist as files, so serve the SPA entrypoint
+        // after checking whether the request matches a built asset.
+        .fallback_service(
+            ServeDir::new("frontend/dist").fallback(ServeFile::new("frontend/dist/index.html")),
+        )
+        .layer(from_fn_with_state(state.clone(), log_failed_requests))
         .with_state(state)
+}
+
+async fn log_failed_requests(
+    State(state): State<FirewallState>,
+    request: Request,
+    next: Next,
+) -> Response {
+    let client_ip = request
+        .extensions()
+        .get::<ConnectInfo<SocketAddr>>()
+        .map(|info| info.0.ip().to_string())
+        .unwrap_or_else(|| "unknown".to_string());
+    let method = request.method().clone();
+    let uri = request.uri().clone();
+    let response = next.run(request).await;
+
+    if response.status().is_server_error() {
+        let message = format!("{method} {uri} returned {}", response.status());
+        state
+            .logs
+            .record_details(
+                "ERROR",
+                &message,
+                Some(&client_ip),
+                Some(&client_ip),
+                None,
+                None,
+                None,
+                None,
+                Some("DROP"),
+            )
+            .await;
+    }
+    response
 }
 /// # User is **NOT** Authenticated
 ///
@@ -144,16 +211,51 @@ fn safe_router() -> Router<FirewallState> {
         .route("/rename_user", patch(rename_user_endpoint))
         .route("/get_all_user", get(list_users));
 
-    Router::new()
-        .without_v07_checks()
-        .route("/logout", get(crate::auth::logout))
+    let password_change_route = Router::new()
+        .route(
+            "/change_password",
+            post(crate::api::change_password_endpoint),
+        )
+        .route_layer(login_required!(Database, login_url = "/api/v1/login"));
+
+    let restricted_routes = Router::new()
         .route(
             "/role_and_permissions",
             get(crate::auth::get_role_and_permissions),
         )
         .nest("/config", config_router())
+        .route("/logs", get(crate::state::get_logs))
+        .route("/logs/ws", get(crate::state::log_websocket))
         .nest("/users", user_routes)
+        .route_layer(from_fn(require_completed_password_change))
+        .route_layer(login_required!(Database, login_url = "/api/v1/login"));
+
+    Router::new()
+        .without_v07_checks()
+        .route("/logout", get(crate::auth::logout))
         .route_layer(login_required!(Database, login_url = "/api/v1/login"))
+        .merge(password_change_route)
+        .merge(restricted_routes)
+}
+
+async fn require_completed_password_change(
+    auth_session: AuthSession<Database>,
+    request: Request,
+    next: Next,
+) -> Response {
+    if auth_session
+        .user
+        .as_ref()
+        .is_some_and(|user| !user.password_must_be_changed)
+    {
+        return next.run(request).await;
+    }
+
+    (
+        axum::http::StatusCode::FORBIDDEN,
+        "Password change required before using this service",
+    )
+        .into_response()
 }
 #[cfg(test)]
 mod openapi_tests {
