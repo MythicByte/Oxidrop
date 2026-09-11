@@ -1,4 +1,7 @@
-use std::str::FromStr;
+use std::{
+    io,
+    str::FromStr,
+};
 
 use argon2::{
     Argon2,
@@ -14,6 +17,11 @@ use axum::{
 };
 use bitflags::bitflags;
 use hyper::StatusCode;
+use oxidrop_common::{
+    ActivaterEtherTypes,
+    FirewallConfig,
+    RateProfile,
+};
 use serde::{
     Deserialize,
     Serialize,
@@ -98,7 +106,169 @@ pub struct Database {
     pub pool: SqlitePool,
 }
 
+#[derive(Debug, FromRow)]
+struct FirewallConfigRow {
+    tcp_rate_shift: i64,
+    tcp_burst: i64,
+    udp_rate_shift: i64,
+    udp_burst: i64,
+    icmp_rate_shift: i64,
+    icmp_burst: i64,
+    default_rate_shift: i64,
+    default_burst: i64,
+    protocol_allowed: i64,
+    ddos_activated: bool,
+    incoming_ethernet_adapter: Option<i64>,
+    output_ethernet_adapter: Option<i64>,
+}
+
+fn sqlite_integer(value: u64, field: &str) -> Result<i64, sqlx::Error> {
+    i64::try_from(value).map_err(|_| {
+        sqlx::Error::Encode(Box::new(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            format!("{field} does not fit in a SQLite INTEGER"),
+        )))
+    })
+}
+
 impl Database {
+    pub async fn save_firewall_config(&self, config: &FirewallConfig) -> Result<(), sqlx::Error> {
+        let tcp_rate_shift = sqlite_integer(config.tcp_profile.rate_shift, "tcp_rate_shift")?;
+        let tcp_burst = sqlite_integer(config.tcp_profile.burst, "tcp_burst")?;
+        let udp_rate_shift = sqlite_integer(config.udp_profile.rate_shift, "udp_rate_shift")?;
+        let udp_burst = sqlite_integer(config.udp_profile.burst, "udp_burst")?;
+        let icmp_rate_shift = sqlite_integer(config.icmp_profile.rate_shift, "icmp_rate_shift")?;
+        let icmp_burst = sqlite_integer(config.icmp_profile.burst, "icmp_burst")?;
+        let default_rate_shift =
+            sqlite_integer(config.default_profile.rate_shift, "default_rate_shift")?;
+        let default_burst = sqlite_integer(config.default_profile.burst, "default_burst")?;
+
+        let _ = sqlx::query_as!(
+            FirewallConfigRow,
+            r#"INSERT INTO firewall_config (
+                id, name, tcp_rate_shift, tcp_burst, udp_rate_shift, udp_burst,
+                icmp_rate_shift, icmp_burst, default_rate_shift, default_burst,
+                protocol_allowed, ddos_activated, incoming_ethernet_adapter, output_ethernet_adapter
+            ) VALUES (1, 'default', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(id) DO UPDATE SET
+                tcp_rate_shift=excluded.tcp_rate_shift, tcp_burst=excluded.tcp_burst,
+                udp_rate_shift=excluded.udp_rate_shift, udp_burst=excluded.udp_burst,
+                icmp_rate_shift=excluded.icmp_rate_shift, icmp_burst=excluded.icmp_burst,
+                default_rate_shift=excluded.default_rate_shift, default_burst=excluded.default_burst,
+                protocol_allowed=excluded.protocol_allowed, ddos_activated=excluded.ddos_activated,
+                incoming_ethernet_adapter=excluded.incoming_ethernet_adapter,
+                output_ethernet_adapter=excluded.output_ethernet_adapter
+            RETURNING tcp_rate_shift, tcp_burst, udp_rate_shift, udp_burst,
+                      icmp_rate_shift, icmp_burst, default_rate_shift, default_burst,
+                      protocol_allowed, ddos_activated AS "ddos_activated: bool",
+                      incoming_ethernet_adapter, output_ethernet_adapter"#,
+            tcp_rate_shift,
+            tcp_burst,
+            udp_rate_shift,
+            udp_burst,
+            icmp_rate_shift,
+            icmp_burst,
+            default_rate_shift,
+            default_burst,
+            config.protocol_allowed.bits(),
+            config.ddos_activated,
+            config.incoming_ethernet_adapter,
+            config.output_ethernet_adapter
+        )
+        .fetch_one(&self.pool)
+        .await?;
+        Ok(())
+    }
+
+    pub async fn load_firewall_config(&self) -> Result<Option<FirewallConfig>, sqlx::Error> {
+        let Some(row) = sqlx::query_as!(
+            FirewallConfigRow,
+            r#"SELECT tcp_rate_shift, tcp_burst, udp_rate_shift, udp_burst,
+                    icmp_rate_shift, icmp_burst, default_rate_shift, default_burst,
+                    protocol_allowed, ddos_activated AS "ddos_activated: bool",
+                    incoming_ethernet_adapter, output_ethernet_adapter
+             FROM firewall_config
+             WHERE id = 1"#,
+        )
+        .fetch_optional(&self.pool)
+        .await?
+        else {
+            return Ok(None);
+        };
+
+        let invalid = |field: &str| {
+            sqlx::Error::Decode(Box::new(io::Error::new(
+                io::ErrorKind::InvalidData,
+                format!("invalid firewall_config.{field}"),
+            )))
+        };
+        let rate_shift = |value: i64, field: &str| {
+            u64::try_from(value)
+                .ok()
+                .filter(|value| *value <= 63)
+                .ok_or_else(|| invalid(field))
+        };
+        let burst = |value: i64, field: &str| {
+            u64::try_from(value).map_err(|_| invalid(field))
+        };
+        let adapter = |value: Option<i64>, field: &str| {
+            value
+                .map(|value| u32::try_from(value).map_err(|_| invalid(field)))
+                .transpose()
+        };
+        let protocol_allowed = u16::try_from(row.protocol_allowed)
+            .ok()
+            .and_then(ActivaterEtherTypes::from_bits)
+            .ok_or_else(|| invalid("protocol_allowed"))?;
+
+        Ok(Some(FirewallConfig {
+            tcp_profile: RateProfile {
+                rate_shift: rate_shift(row.tcp_rate_shift, "tcp_rate_shift")?,
+                burst: burst(row.tcp_burst, "tcp_burst")?,
+            },
+            udp_profile: RateProfile {
+                rate_shift: rate_shift(row.udp_rate_shift, "udp_rate_shift")?,
+                burst: burst(row.udp_burst, "udp_burst")?,
+            },
+            icmp_profile: RateProfile {
+                rate_shift: rate_shift(row.icmp_rate_shift, "icmp_rate_shift")?,
+                burst: burst(row.icmp_burst, "icmp_burst")?,
+            },
+            default_profile: RateProfile {
+                rate_shift: rate_shift(row.default_rate_shift, "default_rate_shift")?,
+                burst: burst(row.default_burst, "default_burst")?,
+            },
+            protocol_allowed,
+            ddos_activated: row.ddos_activated,
+            incoming_ethernet_adapter: adapter(
+                row.incoming_ethernet_adapter,
+                "incoming_ethernet_adapter",
+            )?,
+            output_ethernet_adapter: adapter(
+                row.output_ethernet_adapter,
+                "output_ethernet_adapter",
+            )?,
+        }))
+    }
+
+    pub async fn record_log(
+        &self,
+        level: &str,
+        message: &str,
+        actor: Option<&str>,
+    ) -> Result<(), sqlx::Error> {
+        sqlx::query!(
+            "INSERT INTO firewall_logs (timestamp, level, message, actor)
+             VALUES (unixepoch(), ?, ?, ?)",
+            level,
+            message,
+            actor
+        )
+        .execute(&self.pool)
+        .await?;
+        Ok(())
+    }
+
     /// Initializes the database connection and saves it to disk if it doesn't exist.
     pub async fn new(db_url: &str) -> Result<Self, sqlx::Error> {
         // create_if_missing(true) ensures the file is saved to disk upon creation
@@ -122,7 +292,7 @@ impl Database {
         }
         if password.len() > 120 {
             return Err(UserError::WeakPassword(
-                "Password must not be bigger then 120 characters long.".into(),
+                "Password must not be longer than 120 characters.".into(),
             ));
         }
 
@@ -153,21 +323,21 @@ impl Database {
         target_password: &str,
         target_role: RolesUser,
         target_permissions: ActionPermissions,
+        password_must_be_changed: bool,
     ) -> Result<(), UserError> {
         match caller.role {
             RolesUser::Admin if caller.permissions.contains(ActionPermissions::CREATE) => {
-                // Force password reset for newly created users by default
                 self.internal_insert_user(
                     target_username,
                     target_password,
                     target_role,
                     target_permissions,
-                    1,
+                    i64::from(password_must_be_changed),
                     false,
                 )
                 .await
             }
-            _ => return Err(UserError::LackingPermission),
+            RolesUser::Viewer | RolesUser::Admin => Err(UserError::LackingPermission),
         }
     }
     /// Checks if the users table is empty. If it is, creates a default admin.
@@ -177,9 +347,29 @@ impl Database {
             .await?;
 
         if count == 0 {
-            let temp_password = "password";
             warn!("WARN: Database empty. Bootstrapping default user 'admin'.");
+            let temp_password = "password";
             warn!("WARN: Temporary password is: {}", temp_password);
+            if let Err(error) = self
+                .record_log(
+                    "WARN",
+                    "Database empty; bootstrapping default admin",
+                    Some("system"),
+                )
+                .await
+            {
+                warn!("Failed to record bootstrap log: {error}");
+            }
+            if let Err(error) = self
+                .record_log(
+                    "WARN",
+                    "Temporary default admin password was generated",
+                    Some("system"),
+                )
+                .await
+            {
+                warn!("Failed to record bootstrap log: {error}");
+            }
 
             let insert_result = self
                 .internal_insert_user(
@@ -269,7 +459,7 @@ impl Database {
                     Ok(())
                 }
             }
-            _ => return Err(UserError::LackingPermission),
+            RolesUser::Viewer | RolesUser::Admin => Err(UserError::LackingPermission),
         }
     }
     /// Modifies an existing user.
@@ -281,19 +471,39 @@ impl Database {
         new_role: RolesUser,
         new_permissions: ActionPermissions,
         is_active: i64,
+        new_password: Option<&str>,
     ) -> Result<(), UserError> {
         // Enforce the caller's permissions
         match caller.role {
             RolesUser::Admin if caller.permissions.contains(ActionPermissions::MODIFY) => {
+                let password_hash = if let Some(password) = new_password {
+                    Self::validate_password(password)?;
+                    let salt = SaltString::generate();
+                    Some(
+                        PasswordHasher::hash_password_with_salt(
+                            &Argon2::default(),
+                            password.as_bytes(),
+                            salt.as_bytes(),
+                        )
+                        .map_err(|error| UserError::Internal(error.to_string()))?
+                        .to_string(),
+                    )
+                } else {
+                    None
+                };
                 let rows_affected = sqlx::query!(
                     r#"
-            UPDATE users 
-            SET role = ?, action_permissions = ?, is_active = ? 
-            WHERE username = ?
-            "#,
+                    UPDATE users
+                    SET role = ?, action_permissions = ?, is_active = ?,
+                        password_hash = COALESCE(?, password_hash),
+                        password_must_be_changed = CASE WHEN ? IS NULL THEN password_must_be_changed ELSE 1 END
+                    WHERE username = ?
+                    "#,
                     new_role.as_str(),
                     new_permissions.bits(),
                     is_active,
+                    password_hash.as_deref(),
+                    password_hash.as_deref(),
                     target_username
                 )
                 .execute(&self.pool)
@@ -306,9 +516,33 @@ impl Database {
 
                 Ok(())
             }
-            _ => return Err(UserError::LackingPermission),
+            RolesUser::Viewer | RolesUser::Admin => Err(UserError::LackingPermission),
         }
     }
+
+    pub async fn change_password(&self, user_id: i64, password: &str) -> Result<(), UserError> {
+        Self::validate_password(password)?;
+        let salt = SaltString::generate();
+        let password_hash = PasswordHasher::hash_password_with_salt(
+            &Argon2::default(),
+            password.as_bytes(),
+            salt.as_bytes(),
+        )
+        .map_err(|error| UserError::Internal(error.to_string()))?
+        .to_string();
+        let result = sqlx::query!(
+            "UPDATE users SET password_hash = ?, password_must_be_changed = 0 WHERE id = ?",
+            password_hash,
+            user_id
+        )
+        .execute(&self.pool)
+        .await?;
+        if result.rows_affected() != 1 {
+            return Err(UserError::NotFound(user_id.to_string()));
+        }
+        Ok(())
+    }
+
     /// Changes a user's username.
     /// Ensures caller has MODIFY permission and that the new username isn't already taken.
     pub async fn change_username(
@@ -343,15 +577,66 @@ impl Database {
                     Err(e) => Err(UserError::Database(e)),
                 }
             }
-            _ => return Err(UserError::LackingPermission),
+            RolesUser::Viewer | RolesUser::Admin => Err(UserError::LackingPermission),
         }
     }
     pub async fn get_all_users(&self) -> Result<Vec<UserRow>, sqlx::Error> {
-        let query = "SELECT id, username, role, action_permissions AS permissions, is_active FROM users ORDER BY id ASC;";
-
-        sqlx::query_as::<_, UserRow>(query)
+        sqlx::query_as!(
+            UserRow,
+            r#"SELECT id, username,
+                    CASE role WHEN 'admin' THEN 'Admin' ELSE 'Viewer' END AS role,
+                    action_permissions AS "permissions: i32",
+                    is_active AS "is_active: bool"
+             FROM users
+             ORDER BY id ASC"#
+        )
             .fetch_all(&self.pool)
             .await
+    }
+}
+impl IntoResponse for UserError {
+    fn into_response(self) -> Response {
+        let (status, error_message) = match self {
+            UserError::UserExists(_) => (StatusCode::CONFLICT, "User already exists".to_string()),
+
+            UserError::InvalidCredentials => {
+                (StatusCode::UNAUTHORIZED, "Invalid credentials".to_string())
+            }
+
+            UserError::NotFound(_) => (StatusCode::NOT_FOUND, "User not found".to_string()),
+
+            UserError::LackingPermission => (
+                StatusCode::FORBIDDEN,
+                "Insufficient permissions".to_string(),
+            ),
+
+            UserError::WeakPassword(reason) | UserError::TooLongPassword(reason) => (
+                StatusCode::BAD_REQUEST,
+                format!("Password requirement not met: {}", reason),
+            ),
+
+            UserError::Database(e) => {
+                tracing::error!(error = %e, "Database query failed");
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "An internal server error occurred".to_string(),
+                )
+            }
+
+            UserError::Internal(e) => {
+                tracing::error!(error = %e, "Internal application error");
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "An internal server error occurred".to_string(),
+                )
+            }
+        };
+
+        let body = Json(json!({
+            "error": error_message
+        }));
+
+        (status, body).into_response()
     }
 }
 #[cfg(test)]
@@ -364,11 +649,11 @@ mod tests {
     async fn setup_test_db() -> Database {
         // We use a memory database so tests run fast and isolated.
         // The create_if_missing flag in Database::new will handle this seamlessly.
-        let db = Database::new("sqlite::memory:")
-            .await
-            .expect("Failed to initialize in-memory database");
 
-        db
+
+        Database::new("sqlite::memory:")
+            .await
+            .expect("Failed to initialize in-memory database")
     }
 
     /// Helper to get a standard Admin context with all permissions.
@@ -395,6 +680,7 @@ mod tests {
                 "ValidPassword123!",
                 RolesUser::Viewer,
                 ActionPermissions::NONE,
+                true,
             )
             .await
             .unwrap_err();
@@ -412,6 +698,7 @@ mod tests {
                 "ValidPassword123!",
                 RolesUser::Viewer,
                 ActionPermissions::NONE,
+                true,
             )
             .await
             .unwrap_err();
@@ -429,6 +716,7 @@ mod tests {
                 "ValidPassword123!",
                 RolesUser::Viewer,
                 ActionPermissions::NONE,
+                true,
             )
             .await;
         assert!(
@@ -449,6 +737,7 @@ mod tests {
             "ValidPassword123!",
             RolesUser::Viewer,
             ActionPermissions::NONE,
+            true,
         )
         .await
         .unwrap();
@@ -458,6 +747,7 @@ mod tests {
             "ValidPassword123!",
             RolesUser::Viewer,
             ActionPermissions::NONE,
+            true,
         )
         .await
         .unwrap();
@@ -484,6 +774,7 @@ mod tests {
                 "short",
                 RolesUser::Viewer,
                 ActionPermissions::NONE,
+                true,
             )
             .await
             .unwrap_err();
@@ -500,6 +791,7 @@ mod tests {
                 "password123",
                 RolesUser::Viewer,
                 ActionPermissions::NONE,
+                true,
             )
             .await
             .unwrap_err();
@@ -517,7 +809,14 @@ mod tests {
 
         // Modify
         let err_mod = db
-            .modify_user(&ctx, ghost, RolesUser::Viewer, ActionPermissions::NONE, 1)
+            .modify_user(
+                &ctx,
+                ghost,
+                RolesUser::Viewer,
+                ActionPermissions::NONE,
+                1,
+                None,
+            )
             .await
             .unwrap_err();
         assert!(matches!(err_mod, UserError::NotFound(name) if name == ghost));
@@ -555,6 +854,7 @@ mod tests {
                         password,
                         RolesUser::Viewer,
                         ActionPermissions::NONE,
+                        true,
                     )
                     .await
             });
@@ -626,6 +926,7 @@ mod tests {
             "ValidPassword123!",
             RolesUser::Viewer,
             ActionPermissions::NONE,
+            true,
         )
         .await
         .unwrap();
@@ -644,6 +945,7 @@ mod tests {
                 RolesUser::Admin,
                 ActionPermissions::NONE,
                 1,
+                None,
             )
             .await
             .unwrap_err();
@@ -668,50 +970,5 @@ mod tests {
             matches!(err_del, UserError::LackingPermission),
             "Delete succeeded without DELETE permission"
         );
-    }
-}
-impl IntoResponse for UserError {
-    fn into_response(self) -> Response {
-        let (status, error_message) = match self {
-            UserError::UserExists(_) => (StatusCode::CONFLICT, "User already exists".to_string()),
-
-            UserError::InvalidCredentials => {
-                (StatusCode::UNAUTHORIZED, "Invalid credentials".to_string())
-            }
-
-            UserError::NotFound(_) => (StatusCode::NOT_FOUND, "User not found".to_string()),
-
-            UserError::LackingPermission => (
-                StatusCode::FORBIDDEN,
-                "Insufficient permissions".to_string(),
-            ),
-
-            UserError::WeakPassword(reason) | UserError::TooLongPassword(reason) => (
-                StatusCode::BAD_REQUEST,
-                format!("Password requirement not met: {}", reason),
-            ),
-
-            UserError::Database(e) => {
-                tracing::error!(error = %e, "Database query failed");
-                (
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    "An internal server error occurred".to_string(),
-                )
-            }
-
-            UserError::Internal(e) => {
-                tracing::error!(error = %e, "Internal application error");
-                (
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    "An internal server error occurred".to_string(),
-                )
-            }
-        };
-
-        let body = Json(json!({
-            "error": error_message
-        }));
-
-        (status, body).into_response()
     }
 }
