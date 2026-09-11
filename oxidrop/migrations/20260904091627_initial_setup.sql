@@ -66,8 +66,8 @@ CREATE TABLE firewall_config (
     -- DDoS Protection Toggle: Restricted to boolean
     ddos_activated INTEGER NOT NULL CHECK(ddos_activated IN (0, 1)),
      
-    -- If the Subnet should ne checked
-    subnet_activated INTEGER NOT NULL CHECK(subnet_activated IN (0, 1)),
+    -- Whether subnet matching is enforced
+    subnet_activated INTEGER NOT NULL DEFAULT 1 CHECK(subnet_activated IN (0, 1)),
     
     -- Ethernet Adapters (Optional, so they can be NULL)
     incoming_ethernet_adapter INTEGER,
