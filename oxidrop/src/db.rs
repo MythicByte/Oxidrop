@@ -147,9 +147,21 @@ impl Database {
         let _ = sqlx::query_as!(
             FirewallConfigRow,
             r#"INSERT INTO firewall_config (
-                id, name, tcp_rate_shift, tcp_burst, udp_rate_shift, udp_burst,
-                icmp_rate_shift, icmp_burst, default_rate_shift, default_burst,
-                protocol_allowed, ddos_activated, subnet_activated, incoming_ethernet_adapter, output_ethernet_adapter
+                id,
+                name,
+                tcp_rate_shift,
+                tcp_burst,
+                udp_rate_shift,
+                udp_burst,
+                icmp_rate_shift,
+                icmp_burst,
+                default_rate_shift,
+                default_burst,
+                protocol_allowed,
+                ddos_activated,
+                subnet_activated,
+                incoming_ethernet_adapter,
+                output_ethernet_adapter
             ) VALUES (1, 'default', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(id) DO UPDATE SET
                 tcp_rate_shift=excluded.tcp_rate_shift, tcp_burst=excluded.tcp_burst,
@@ -157,7 +169,8 @@ impl Database {
                 icmp_rate_shift=excluded.icmp_rate_shift, icmp_burst=excluded.icmp_burst,
                 default_rate_shift=excluded.default_rate_shift, default_burst=excluded.default_burst,
                 protocol_allowed=excluded.protocol_allowed, ddos_activated=excluded.ddos_activated,
-                subnet_activated=excluded.subnet_activated,incoming_ethernet_adapter=excluded.incoming_ethernet_adapter,
+                subnet_activated=excluded.subnet_activated,
+                incoming_ethernet_adapter=excluded.incoming_ethernet_adapter,
                 output_ethernet_adapter=excluded.output_ethernet_adapter
             RETURNING tcp_rate_shift, tcp_burst, udp_rate_shift, udp_burst,
                       icmp_rate_shift, icmp_burst, default_rate_shift, default_burst,
@@ -186,11 +199,20 @@ impl Database {
     pub async fn load_firewall_config(&self) -> Result<Option<FirewallConfig>, sqlx::Error> {
         let Some(row) = sqlx::query_as!(
             FirewallConfigRow,
-            r#"SELECT tcp_rate_shift, tcp_burst, udp_rate_shift, udp_burst,
-                    icmp_rate_shift, icmp_burst, default_rate_shift, default_burst,
-                    protocol_allowed, ddos_activated AS "ddos_activated: bool",
+            r#"SELECT
+                    tcp_rate_shift,
+                    tcp_burst,
+                    udp_rate_shift,
+                    udp_burst,
+                    icmp_rate_shift,
+                    icmp_burst,
+                    default_rate_shift,
+                    default_burst,
+                    protocol_allowed,
+                    ddos_activated AS "ddos_activated: bool",
                     subnet_activated AS "subnet_activated: bool",
-                    incoming_ethernet_adapter, output_ethernet_adapter
+                    incoming_ethernet_adapter,
+                    output_ethernet_adapter
              FROM firewall_config
              WHERE id = 1"#,
         )
