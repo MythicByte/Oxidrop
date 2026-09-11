@@ -5,7 +5,7 @@ pub mod ebpf;
 pub mod router;
 pub mod state;
 use clap::Parser;
-#[derive(Debug, Parser)]
+#[derive(Debug, Clone, Parser)]
 pub struct Opt {
     /// choose http port
     #[clap(long, default_value_t = 3000)]
