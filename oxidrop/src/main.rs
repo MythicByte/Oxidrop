@@ -89,7 +89,9 @@ async fn main() -> anyhow::Result<()> {
     config_map
         .set(0, firewall_config, 0)
         .context("Failed to load persisted firewall configuration into CONFIG map")?;
-    ebpf_programm.reboot(&firewall_config, &opt)?;
+    if let Err(e) = ebpf_programm.reboot(&firewall_config, &opt) {
+        error!("Failed to attach XDP programs on startup: {}", e);
+    }
     db.save_firewall_config(&firewall_config)
         .await
         .context("Failed to persist firewall configuration")?;
