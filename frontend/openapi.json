@@ -498,6 +498,31 @@
         ]
       }
     },
+    "/api/v1/config/traffic": {
+      "get": {
+        "tags": [
+          "crate::state"
+        ],
+        "operationId": "get_traffic_stats",
+        "responses": {
+          "200": {
+            "description": "Interface traffic counters",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TrafficStatsResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookie_auth": []
+          }
+        ]
+      }
+    },
     "/api/v1/get_user": {
       "get": {
         "tags": [
@@ -561,6 +586,34 @@
         "responses": {
           "303": {
             "description": "Logout successful"
+          }
+        },
+        "security": [
+          {
+            "cookie_auth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/logs": {
+      "get": {
+        "tags": [
+          "crate::state"
+        ],
+        "operationId": "get_logs",
+        "responses": {
+          "200": {
+            "description": "Recent firewall log entries",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/LogEntry"
+                  }
+                }
+              }
+            }
           }
         },
         "security": [
@@ -795,7 +848,20 @@
       },
       "AdaptersResponse": {
         "type": "object",
+        "required": [
+          "available",
+          "enforcement_active"
+        ],
         "properties": {
+          "available": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AdapterInfo"
+            }
+          },
+          "enforcement_active": {
+            "type": "boolean"
+          },
           "incoming": {
             "oneOf": [
               {
@@ -872,7 +938,8 @@
           "username",
           "role",
           "permissions",
-          "password_hash"
+          "password_hash",
+          "password_must_be_changed"
         ],
         "properties": {
           "id": {
@@ -881,6 +948,9 @@
           },
           "password_hash": {
             "type": "string"
+          },
+          "password_must_be_changed": {
+            "type": "boolean"
           },
           "permissions": {
             "type": "integer",
@@ -976,16 +1046,18 @@
           "username",
           "password",
           "role",
-          "permissions"
+          "permissions",
+          "password_must_be_changed"
         ],
         "properties": {
           "password": {
             "type": "string"
           },
+          "password_must_be_changed": {
+            "type": "boolean"
+          },
           "permissions": {
-            "type": "integer",
-            "format": "int32",
-            "minimum": 0
+            "type": "string"
           },
           "role": {
             "$ref": "#/components/schemas/RolesUser"
@@ -1121,6 +1193,75 @@
           }
         }
       },
+      "LogEntry": {
+        "type": "object",
+        "required": [
+          "id",
+          "timestamp",
+          "level",
+          "message"
+        ],
+        "properties": {
+          "action": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "actor": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "destination_ip": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "destination_port": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          },
+          "id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "level": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "protocol": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "source_ip": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "source_port": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          },
+          "timestamp": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
       "ModifyUserReq": {
         "type": "object",
         "required": [
@@ -1134,10 +1275,14 @@
             "type": "integer",
             "format": "int64"
           },
+          "password": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "permissions": {
-            "type": "integer",
-            "format": "int32",
-            "minimum": 0
+            "type": "string"
           },
           "role": {
             "$ref": "#/components/schemas/RolesUser"
@@ -1311,6 +1456,40 @@
             "type": "integer",
             "format": "int64",
             "minimum": 0
+          }
+        }
+      },
+      "TrafficCounters": {
+        "type": "object",
+        "required": [
+          "packets",
+          "bytes"
+        ],
+        "properties": {
+          "bytes": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "packets": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          }
+        }
+      },
+      "TrafficStatsResponse": {
+        "type": "object",
+        "required": [
+          "incoming",
+          "outgoing"
+        ],
+        "properties": {
+          "incoming": {
+            "$ref": "#/components/schemas/TrafficCounters"
+          },
+          "outgoing": {
+            "$ref": "#/components/schemas/TrafficCounters"
           }
         }
       },
