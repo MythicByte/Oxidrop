@@ -1,10 +1,11 @@
 import { useEffect, useState } from "react";
-import { Activity, ArrowUpRight, Network, ShieldAlert, ShieldCheck, Zap } from "lucide-react";
-import { Card, CardContent } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { client } from "./api";
+import { useNavigate } from "react-router";
+import { Activity, ArrowUpRight, ShieldAlert, ShieldCheck } from "lucide-react";
+import { Card, CardContent } from "./ui/card.tsx";
+import { client } from "./api.tsx";
 
-type Metric = { label: string; value: string; detail: string; icon: typeof Activity; tone: string };
+type Metrics = { ipv4: number; ipv6: number; allow4: number; allow6: number };
+type Series = { label: string; color: string; values: number[] };
 
 async function readJson(response: Response): Promise<unknown> {
   if (!response.ok) return null;
@@ -16,31 +17,126 @@ async function readJson(response: Response): Promise<unknown> {
 }
 
 function countEntries(value: unknown): number {
-  if (Array.isArray(value)) return value.length;
-  if (value && typeof value === "object") return Object.keys(value).length;
-  return 0;
+  return Array.isArray(value)
+    ? value.length
+    : value && typeof value === "object"
+    ? Object.keys(value).length
+    : 0;
 }
 
 function formatCount(value: number | null): string {
   return value === null ? "—" : new Intl.NumberFormat().format(value);
 }
 
+function LineChart({ series }: { series: Series[] }) {
+  const max = Math.max(...series.flatMap(({ values }) => values), 1);
+  const point = (value: number, index: number, length: number) =>
+    `${(index / Math.max(length - 1, 1)) * 300},${108 - (value / max) * 82}`;
+
+  return (
+    <div className="mt-5">
+      <svg
+        viewBox="0 0 300 120"
+        className="h-56 w-full"
+        role="img"
+        aria-label="Firewall metrics line chart"
+      >
+        <path
+          d="M0 108H300 M0 72H300 M0 36H300"
+          className="stroke-border"
+          strokeWidth="1"
+          strokeDasharray="2 4"
+        />
+        {series.map(({ label, color, values }) => (
+          <polyline
+            key={label}
+            points={values.map((value, index) =>
+              point(value, index, values.length)
+            ).join(" ")}
+            fill="none"
+            stroke={color}
+            strokeWidth="2.5"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        ))}
+      </svg>
+      <div className="flex flex-wrap gap-x-5 gap-y-2 text-xs text-muted-foreground">
+        {series.map(({ label, color, values }) => (
+          <div key={label} className="flex items-center gap-2">
+            <span
+              className="size-2 rounded-full"
+              style={{ backgroundColor: color }}
+            />
+            <span>{label}</span>
+            <strong className="text-foreground">
+              {formatCount(values.at(-1) ?? 0)}
+            </strong>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export function DashboardOverview() {
-  const [metrics, setMetrics] = useState({ ipv4: null as number | null, ipv6: null as number | null, allow4: null as number | null, allow6: null as number | null });
+  const [metrics, setMetrics] = useState<Metrics>({
+    ipv4: 0,
+    ipv6: 0,
+    allow4: 0,
+    allow6: 0,
+  });
+  const [history, setHistory] = useState<Metrics[]>([]);
+  const [ddosEnabled, setDdosEnabled] = useState<boolean | null>(null);
+  const [enforcementActive, setEnforcementActive] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  const navigate = useNavigate();
 
   useEffect(() => {
     let active = true;
     async function loadMetrics() {
       try {
-        const [v4Count, v6Count, v4Allow, v6Allow] = await Promise.all([
+        const [
+          v4Count,
+          v6Count,
+          v4Allow,
+          v6Allow,
+          configResponse,
+          adapterResponse,
+        ] = await Promise.all([
           client.GET("/api/v1/config/packet_counts/v4"),
           client.GET("/api/v1/config/packet_counts/v6"),
           client.GET("/api/v1/config/allow_list/v4"),
           client.GET("/api/v1/config/allow_list/v6"),
+          fetch("/api/v1/config", { credentials: "include" }),
+          client.GET("/api/v1/config/adapters"),
         ]);
-        const values = await Promise.all([v4Count.response, v6Count.response, v4Allow.response, v6Allow.response].map(readJson));
-        if (active) setMetrics({ ipv4: countEntries(values[0]), ipv6: countEntries(values[1]), allow4: countEntries(values[2]), allow6: countEntries(values[3]) });
+        const values = await Promise.all(
+          [
+            v4Count.response,
+            v6Count.response,
+            v4Allow.response,
+            v6Allow.response,
+          ].map(readJson),
+        );
+        const config = await readJson(configResponse) as {
+          ddos_activated?: boolean;
+        } | null;
+        if (active) {
+          const next = {
+            ipv4: countEntries(values[0]),
+            ipv6: countEntries(values[1]),
+            allow4: countEntries(values[2]),
+            allow6: countEntries(values[3]),
+          };
+          setMetrics(next);
+          setHistory((current) => [...current, next].slice(-24));
+          setDdosEnabled(config?.ddos_activated ?? null);
+          setEnforcementActive(
+            adapterResponse.response.ok &&
+              adapterResponse.data?.enforcement_active === true,
+          );
+        }
       } catch (error) {
         console.error("Failed to load firewall metrics:", error);
       } finally {
@@ -48,63 +144,232 @@ export function DashboardOverview() {
       }
     }
     void loadMetrics();
-    return () => { active = false; };
+    const interval = globalThis.setInterval(() => void loadMetrics(), 30_000);
+    return () => {
+      active = false;
+      globalThis.clearInterval(interval);
+    };
   }, []);
 
-  const cards: Metric[] = [
-    { label: "IPv4 packet entries", value: isLoading ? "…" : formatCount(metrics.ipv4), detail: "Tracked by eBPF", icon: Activity, tone: "text-sky-600 bg-sky-500/10" },
-    { label: "IPv6 packet entries", value: isLoading ? "…" : formatCount(metrics.ipv6), detail: "Tracked by eBPF", icon: Activity, tone: "text-violet-600 bg-violet-500/10" },
-    { label: "IPv4 allow list", value: isLoading ? "…" : formatCount(metrics.allow4), detail: "Active policy entries", icon: ShieldCheck, tone: "text-emerald-600 bg-emerald-500/10" },
-    { label: "IPv6 allow list", value: isLoading ? "…" : formatCount(metrics.allow6), detail: "Active policy entries", icon: ShieldCheck, tone: "text-amber-600 bg-amber-500/10" },
-  ];
+  const cards = [
+    [
+      "IPv4 packet entries",
+      metrics.ipv4,
+      "Tracked by eBPF",
+      Activity,
+      "text-sky-600 bg-sky-500/10",
+    ],
+    [
+      "IPv6 packet entries",
+      metrics.ipv6,
+      "Tracked by eBPF",
+      Activity,
+      "text-violet-600 bg-violet-500/10",
+    ],
+    [
+      "IPv4 allow list",
+      metrics.allow4,
+      "Active policy entries",
+      ShieldCheck,
+      "text-emerald-600 bg-emerald-500/10",
+    ],
+    [
+      "IPv6 allow list",
+      metrics.allow6,
+      "Active policy entries",
+      ShieldCheck,
+      "text-amber-600 bg-amber-500/10",
+    ],
+  ] as const;
 
   return (
-    <div className="space-y-8 p-4 sm:p-6 lg:p-8">
+    <div className="mx-auto max-w-375 space-y-7 p-4 sm:p-6 lg:p-8">
       <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
         <div>
-          <p className="mb-2 text-xs font-semibold uppercase tracking-[0.2em] text-primary">Security operations</p>
-          <h1 className="text-3xl font-bold tracking-tight sm:text-4xl">Firewall overview</h1>
-          <p className="mt-2 max-w-xl text-muted-foreground">Monitor policy enforcement and eBPF state from one focused control plane.</p>
+          <p className="mb-2 text-xs font-semibold uppercase tracking-[0.2em] text-primary">
+            Security operations
+          </p>
+          <h1 className="text-3xl font-bold tracking-tight sm:text-4xl">
+            Firewall overview
+          </h1>
+          <p className="mt-2 max-w-xl text-muted-foreground">
+            Monitor policy enforcement and eBPF state from one focused control
+            plane.
+          </p>
         </div>
-        <div className="flex items-center gap-2 rounded-full border bg-background px-3 py-2 text-xs font-medium shadow-sm">
-          <span className="size-2 rounded-full bg-emerald-500" /> Enforcement active
+        <div className="flex items-center gap-2 rounded-md border bg-background px-3 py-2 text-xs font-medium shadow-sm">
+          <span
+            className={`size-2 rounded-full ${
+              enforcementActive ? "bg-emerald-500" : "bg-amber-500"
+            }`}
+          />
+          {enforcementActive ? "Enforcement active" : "Enforcement inactive"}
         </div>
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        {cards.map(({ label, value, detail, icon: Icon, tone }) => (
-          <Card key={label} className="border-0 shadow-sm">
+        {cards.map(([label, value, detail, Icon, tone], index) => (
+          <Card
+            key={label}
+            className="border shadow-sm transition-colors hover:border-primary/50"
+            role="link"
+            tabIndex={0}
+            onClick={() =>
+              navigate(
+                index < 2
+                  ? "/dashboard/configuration"
+                  : "/dashboard/allow-lists",
+              )}
+            onKeyDown={(event) => {
+              if (event.key === "Enter" || event.key === " ") {
+                event.preventDefault();
+                navigate(
+                  index < 2
+                    ? "/dashboard/configuration"
+                    : "/dashboard/allow-lists",
+                );
+              }
+            }}
+          >
             <CardContent className="p-5">
               <div className="flex items-start justify-between">
-                <div className={`grid size-10 place-items-center rounded-xl ${tone}`}><Icon className="size-5" /></div>
+                <div
+                  className={`grid size-10 place-items-center rounded-md ${tone}`}
+                >
+                  <Icon className="size-5" />
+                </div>
                 <ArrowUpRight className="size-4 text-muted-foreground" />
               </div>
               <p className="mt-5 text-sm text-muted-foreground">{label}</p>
-              <p className="mt-1 text-3xl font-bold tracking-tight">{value}</p>
+              <p className="mt-1 text-3xl font-bold tracking-tight">
+                {isLoading ? "…" : formatCount(value)}
+              </p>
               <p className="mt-1 text-xs text-muted-foreground">{detail}</p>
             </CardContent>
           </Card>
         ))}
       </div>
 
+      <div className="grid gap-5 xl:grid-cols-2">
+        <Card className="border shadow-sm">
+          <CardContent className="p-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="font-semibold">Packets transmitted today</h2>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Traffic observations collected while this dashboard is open.
+                </p>
+              </div>
+              <span
+                className={`rounded-md px-2.5 py-1 text-xs font-semibold ${
+                  ddosEnabled
+                    ? "bg-emerald-500/10 text-emerald-700"
+                    : "bg-amber-500/10 text-amber-700"
+                }`}
+              >
+                DDoS {ddosEnabled === null
+                  ? "unknown"
+                  : ddosEnabled
+                  ? "enabled"
+                  : "disabled"}
+              </span>
+            </div>
+            <LineChart
+              series={[{
+                label: "Transmitted packets",
+                color: "#0ea5e9",
+                values: history.map(({ ipv4, ipv6 }) => ipv4 + ipv6),
+              }]}
+            />
+          </CardContent>
+        </Card>
+        <Card className="border shadow-sm">
+          <CardContent className="p-6">
+            <div>
+              <h2 className="font-semibold">Packet count</h2>
+              <p className="mt-1 text-sm text-muted-foreground">
+                IPv4 and IPv6 tracked flow entries over time.
+              </p>
+            </div>
+            <LineChart
+              series={[
+                {
+                  label: "IPv4 flows",
+                  color: "#38bdf8",
+                  values: history.map(({ ipv4 }) => ipv4),
+                },
+                {
+                  label: "IPv6 flows",
+                  color: "#8b5cf6",
+                  values: history.map(({ ipv6 }) => ipv6),
+                },
+              ]}
+            />
+          </CardContent>
+        </Card>
+      </div>
+
       <div className="grid gap-5 lg:grid-cols-[1.4fr_1fr]">
-        <Card className="border-0 shadow-sm">
+        <Card className="border shadow-sm">
+          <CardContent className="p-6">
+            <div>
+              <h2 className="font-semibold">Allow list activity</h2>
+              <p className="mt-1 text-sm text-muted-foreground">
+                IPv4 and IPv6 policy entries over time.
+              </p>
+            </div>
+            <LineChart
+              series={[
+                {
+                  label: "IPv4 allow list",
+                  color: "#10b981",
+                  values: history.map(({ allow4 }) => allow4),
+                },
+                {
+                  label: "IPv6 allow list",
+                  color: "#f59e0b",
+                  values: history.map(({ allow6 }) => allow6),
+                },
+              ]}
+            />
+          </CardContent>
+        </Card>
+        <Card className="border shadow-sm">
           <CardContent className="p-6">
             <div className="flex items-start justify-between">
-              <div><h2 className="font-semibold">Protection status</h2><p className="mt-1 text-sm text-muted-foreground">Your firewall is ready to enforce traffic policy.</p></div>
+              <div>
+                <h2 className="font-semibold">Protection status</h2>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Your firewall is ready to enforce traffic policy.
+                </p>
+              </div>
               <ShieldAlert className="size-5 text-primary" />
             </div>
             <div className="mt-6 grid gap-3 sm:grid-cols-3">
-              {[["eBPF programs", "Attached"], ["Policy engine", "Healthy"], ["Telemetry", "Available"]].map(([label, status]) => (
-                <div key={label} className="rounded-xl border bg-muted/30 p-4"><p className="text-xs text-muted-foreground">{label}</p><p className="mt-2 flex items-center gap-2 text-sm font-semibold"><span className="size-2 rounded-full bg-emerald-500" />{status}</p></div>
+              {[
+                [
+                  "eBPF programs",
+                  enforcementActive ? "Attached" : "Not attached",
+                ],
+                ["Policy engine", enforcementActive ? "Healthy" : "Inactive"],
+                [
+                  "Telemetry",
+                  enforcementActive ? "Available" : "Waiting for eBPF",
+                ],
+              ].map(([label, status]) => (
+                <div key={label} className="rounded-md border bg-muted/30 p-4">
+                  <p className="text-xs text-muted-foreground">{label}</p>
+                  <p className="mt-2 flex items-center gap-2 text-sm font-semibold">
+                    <span
+                      className={`size-2 rounded-full ${
+                        enforcementActive ? "bg-emerald-500" : "bg-amber-500"
+                      }`}
+                    />
+                    {status}
+                  </p>
+                </div>
               ))}
             </div>
-          </CardContent>
-        </Card>
-        <Card className="border-0 bg-primary text-primary-foreground shadow-sm">
-          <CardContent className="flex h-full flex-col justify-between p-6">
-            <div><Zap className="size-6" /><h2 className="mt-5 text-xl font-bold">Tune your policy</h2><p className="mt-2 text-sm text-primary-foreground/75">Review allow lists and interface bindings before putting a new rule into production.</p></div>
-            <Button variant="secondary" className="mt-6 w-fit" onClick={() => window.location.assign("/dashboard/allow-lists")}>Manage allow lists <Network /></Button>
           </CardContent>
         </Card>
       </div>
