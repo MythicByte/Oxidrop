@@ -78,6 +78,7 @@ const DEFAULT_CONFIG: FirewallConfig = FirewallConfig {
     },
     incoming_ethernet_adapter: None,
     output_ethernet_adapter: None,
+    subnet_activated: true,
 };
 
 /// Usersapce config
@@ -215,8 +216,12 @@ fn xdp_firewall(ctx: XdpContext) -> Result<u32, FirewallError> {
                 }
             };
             let subnet_key_v4 = Key::new(32, flow_key_direction.source_addr);
-            match SUBNET_MATCHING_V4.get(&subnet_key_v4) {
-                Some(Action::Allow) => (),
+            match (
+                SUBNET_MATCHING_V4.get(&subnet_key_v4),
+                config.subnet_activated,
+            ) {
+                (Some(Action::Allow), true) => (),
+                (_, false) => (),
                 _ => return Err(FirewallError::DeniedByPolicy),
             }
             // normal operation
@@ -469,8 +474,12 @@ fn xdp_firewall(ctx: XdpContext) -> Result<u32, FirewallError> {
                 TraficDirection::Outgoing => src_array,
             };
             let subnet_key_v6 = Key::new(128, subnet_key);
-            match SUBNET_MATCHING_V6.get(&subnet_key_v6) {
-                Some(Action::Allow) => (),
+            match (
+                SUBNET_MATCHING_V6.get(&subnet_key_v6),
+                config.subnet_activated,
+            ) {
+                (Some(Action::Allow), true) => (),
+                (_, false) => (),
                 _ => return Err(FirewallError::DeniedByPolicy),
             }
             if !remove_from_hashmap {

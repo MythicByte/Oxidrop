@@ -91,6 +91,8 @@ pub struct FirewallConfig {
     pub protocol_allowed: ActivaterEtherTypes,
     /// if ddos protection is on
     pub ddos_activated: bool,
+    /// if ddos protection is on
+    pub subnet_activated: bool,
     /// The ethernet address for incoming traffic
     pub incoming_ethernet_adapter: Option<u32>,
     /// The ethernet address for outcoming traffic
@@ -201,6 +203,7 @@ impl Default for FirewallConfig {
             },
             incoming_ethernet_adapter: None,
             output_ethernet_adapter: None,
+            subnet_activated: true,
         }
     }
 }
