@@ -9,7 +9,10 @@ import { Label } from "./ui/label.tsx";
 import { client } from "./api.tsx";
 
 interface LoginFormProps {
-  onAuthenticated?: () => void;
+  onAuthenticated?: (user: {
+    username: string;
+    password_must_be_changed: boolean;
+  }) => void;
 }
 
 export function LoginForm({ onAuthenticated }: LoginFormProps) {
@@ -24,47 +27,51 @@ export function LoginForm({ onAuthenticated }: LoginFormProps) {
     setError(null);
 
     const formData = new FormData(e.currentTarget);
-    const username = formData.get("username") as string;
-    const password = formData.get("password") as string;
+    const username = String(formData.get("username") ?? "");
+    const password = String(formData.get("password") ?? "");
 
-    const { response } = await client.POST("/api/v1/login", {
-      body: { username, password },
-      bodySerializer(body) {
-        return new URLSearchParams(body as Record<string, string>).toString();
-      },
-      headers: {
-        "Content-Type": "application/x-www-form-urlencoded",
-      },
-    });
+    try {
+      const { response } = await client.POST("/api/v1/login", {
+        body: { username, password },
+        bodySerializer(body) {
+          return new URLSearchParams(body).toString();
+        },
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded",
+        },
+      });
 
-    setIsLoading(false);
-
-    if (!response.ok) {
-      if (response.status === 401) {
-        setError("Invalid username or password");
-      } else {
-        setError(`Authentication failed: server returned ${response.status}`);
+      if (!response.ok) {
+        setError(
+          response.status === 401
+            ? "Invalid username or password"
+            : `Authentication failed: server returned ${response.status}`,
+        );
+        return;
       }
-      return;
-    }
 
-    const userResponse = await fetch("/api/v1/get_user", {
-      credentials: "include",
-    });
-    const user = userResponse.ok
-      ? await userResponse.json() as {
-        username?: string;
-        password_must_be_changed?: boolean;
+      const userResponse = await client.GET("/api/v1/get_user");
+      if (!userResponse.response.ok || !userResponse.data) {
+        setError("Login succeeded, but the secure session could not be verified.");
+        return;
       }
-      : null;
-    if (user?.username) {
+
+      const user = userResponse.data;
       localStorage.setItem("username", user.username);
+      onAuthenticated?.({
+        username: user.username,
+        password_must_be_changed: user.password_must_be_changed,
+      });
+      navigate(
+        user.password_must_be_changed ? "/change-password" : "/dashboard",
+        { replace: true },
+      );
+    } catch (reason) {
+      console.error("Login request failed:", reason);
+      setError("Unable to reach the authentication service. Please try again.");
+    } finally {
+      setIsLoading(false);
     }
-    onAuthenticated?.();
-    navigate(
-      user?.password_must_be_changed ? "/change-password" : "/dashboard",
-      { replace: true },
-    );
   };
 
   return (

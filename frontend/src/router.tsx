@@ -1,19 +1,27 @@
-import { Navigate, Outlet } from "react-router";
+import { Navigate, Outlet, useLocation } from "react-router";
 import { useEffect, useState } from "react";
 import { client } from "./components/api.tsx";
 
 interface ProtectedRouteProps {
   isAuthenticated: boolean;
+  passwordMustBeChanged?: boolean;
   redirectPath?: string;
 }
 
 export function ProtectedRoute({
   isAuthenticated,
+  passwordMustBeChanged = false,
   redirectPath = "/login",
 }: ProtectedRouteProps) {
+  const location = useLocation();
+
   if (!isAuthenticated) {
     // Redirect unauthenticated users to the login route
     return <Navigate to={redirectPath} replace />;
+  }
+
+  if (passwordMustBeChanged && location.pathname !== "/change-password") {
+    return <Navigate to="/change-password" replace />;
   }
 
   // Render nested routes if authenticated

@@ -7,9 +7,13 @@ import { Card, CardContent, CardHeader, CardTitle } from "./ui/card.tsx";
 
 interface ChangePasswordProps {
   onLogout?: () => void;
+  onPasswordChanged?: () => void;
 }
 
-export function ChangePassword({ onLogout }: ChangePasswordProps) {
+export function ChangePassword({
+  onLogout,
+  onPasswordChanged,
+}: ChangePasswordProps) {
   const navigate = useNavigate();
   const [password, setPassword] = useState("");
   const [confirmation, setConfirmation] = useState("");
@@ -67,6 +71,7 @@ export function ChangePassword({ onLogout }: ChangePasswordProps) {
         );
         return;
       }
+      onPasswordChanged?.();
       navigate("/dashboard", { replace: true });
     } catch (reason) {
       setError(
