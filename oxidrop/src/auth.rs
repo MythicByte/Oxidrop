@@ -1,5 +1,6 @@
 use std::{
     collections::HashSet,
+    net::SocketAddr,
     sync::OnceLock,
     time::{
         SystemTime,
@@ -17,6 +18,7 @@ use argon2::{
 use axum::{
     Form,
     Json,
+    extract::ConnectInfo,
     response::{
         IntoResponse,
         Redirect,
@@ -59,6 +61,7 @@ pub struct AppUser {
     #[schema(value_type = u8)]
     pub permissions: ActionPermissions,
     pub password_hash: String,
+    pub password_must_be_changed: bool,
 }
 
 impl AuthUser for AppUser {
@@ -89,7 +92,7 @@ impl AuthnBackend for Database {
     ) -> Result<Option<Self::User>, Self::Error> {
         let record = sqlx::query!(
             r#"
-            SELECT id, username, password_hash, role, action_permissions, is_active
+            SELECT id, username, password_hash, role, action_permissions, password_must_be_changed, is_active
             FROM users
             WHERE username = ?
             "#,
@@ -146,13 +149,14 @@ impl AuthnBackend for Database {
             role: parsed_role,
             permissions: ActionPermissions::from_bits_truncate(user.action_permissions as u8),
             password_hash: user.password_hash,
+            password_must_be_changed: user.password_must_be_changed != 0,
         }))
     }
 
     async fn get_user(&self, user_id: &UserId<Self>) -> Result<Option<Self::User>, Self::Error> {
         // This is called by the middleware on every authenticated request to re-hydrate the user.
         let record = sqlx::query!(
-            r#"SELECT id, username, password_hash, role, action_permissions FROM users WHERE id = ? AND is_active = 1"#,
+            r#"SELECT id, username, password_hash, role, action_permissions, password_must_be_changed FROM users WHERE id = ? AND is_active = 1"#,
             user_id
         )
         .fetch_optional(&self.pool)
@@ -175,6 +179,7 @@ impl AuthnBackend for Database {
             role: parsed_role,
             permissions: ActionPermissions::from_bits_truncate(user.action_permissions as u8),
             password_hash: user.password_hash,
+            password_must_be_changed: user.password_must_be_changed != 0,
         }))
     }
 }
@@ -210,15 +215,36 @@ type AuthSession = axum_login::AuthSession<Database>;
 )]
 pub async fn login(
     mut auth_session: AuthSession,
+    ConnectInfo(address): ConnectInfo<SocketAddr>,
     Form(creds): Form<Credentials>,
 ) -> impl IntoResponse {
+    let client_ip = address.ip().to_string();
     let user = match auth_session.authenticate(creds.clone()).await {
         Ok(Some(user)) => user,
-        Ok(None) => return StatusCode::UNAUTHORIZED.into_response(),
-        Err(_) => return StatusCode::UNAUTHORIZED.into_response(),
+        Ok(None) => {
+            if let Err(error) = auth_session
+                .backend
+                .record_log("WARN", "Invalid credentials", Some(&client_ip))
+                .await
+            {
+                tracing::error!("failed to record invalid login: {error}");
+            }
+            return StatusCode::UNAUTHORIZED.into_response();
+        }
+        Err(_) => {
+            if let Err(error) = auth_session
+                .backend
+                .record_log("WARN", "Invalid credentials", Some(&client_ip))
+                .await
+            {
+                tracing::error!("failed to record invalid login: {error}");
+            }
+            return StatusCode::UNAUTHORIZED.into_response();
+        }
     };
 
-    if auth_session.login(&user).await.is_err() {
+    if let Err(error) = auth_session.login(&user).await {
+        tracing::error!("failed to create login session: {error}");
         return StatusCode::INTERNAL_SERVER_ERROR.into_response();
     }
 
