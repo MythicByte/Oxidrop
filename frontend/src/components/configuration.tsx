@@ -258,7 +258,7 @@ export function FirewallConfiguration() {
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="space-y-2">
-              <Label>Incoming Adapter (Ingress)</Label>
+              <Label>Incoming Adapter </Label>
               <Select
                 disabled={!hasModify}
                 value={config.incoming_ethernet_adapter?.toString() ?? "none"}
@@ -292,7 +292,7 @@ export function FirewallConfiguration() {
             </div>
 
             <div className="space-y-2">
-              <Label>Outgoing Adapter (Egress)</Label>
+              <Label>Outgoing Adapter </Label>
               <Select
                 disabled={!hasModify}
                 value={config.output_ethernet_adapter?.toString() ?? "none"}
