@@ -1,16 +1,18 @@
 import { useState } from "react";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { client } from "./api";
+import type { SubmitEvent } from "react";
+import { Eye, EyeOff } from "lucide-react";
+import { Button } from "./ui/button.tsx";
+import { Card, CardContent, CardHeader, CardTitle } from "./ui/card.tsx";
+import { Input } from "./ui/input.tsx";
+import { Label } from "./ui/label.tsx";
+import { client } from "./api.tsx";
 
 export function LoginForm() {
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
 
-  const handleSubmit = async (e: React.SyntheticEvent<HTMLFormElement>) => {
+  const handleSubmit = async (e: SubmitEvent<HTMLFormElement>) => {
     e.preventDefault();
     setIsLoading(true);
     setError(null);
@@ -40,7 +42,15 @@ export function LoginForm() {
       return;
     }
 
-    window.location.href = "/dashboard";
+    const userResponse = await fetch("/api/v1/get_user", {
+      credentials: "include",
+    });
+    const user = userResponse.ok
+      ? await userResponse.json() as { password_must_be_changed?: boolean }
+      : null;
+    globalThis.location.href = user?.password_must_be_changed
+      ? "/change-password"
+      : "/dashboard";
   };
 
   return (
@@ -60,30 +70,32 @@ export function LoginForm() {
                 id="username"
                 name="username"
                 type="text"
-                placeholder="username"
+                placeholder="user"
                 required
               />
             </div>
             <div className="grid gap-2">
-              <div className="flex items-center justify-between">
-                <Label htmlFor="password">Password</Label>
-                {/* The show/hide password toggle */}
+              <Label htmlFor="password">Password</Label>
+              <div className="relative">
+                <Input
+                  id="password"
+                  name="password"
+                  type={showPassword ? "text" : "password"}
+                  placeholder="password"
+                  required
+                  className="pr-10"
+                />
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="text-xs text-muted-foreground hover:underline focus:outline-none"
-                  tabIndex={-1}
+                  className="absolute inset-y-0 right-0 grid w-10 place-items-center text-muted-foreground hover:text-foreground"
+                  aria-label={showPassword ? "Hide password" : "Show password"}
                 >
-                  {showPassword ? "Hide" : "Show"}
+                  {showPassword
+                    ? <EyeOff className="size-4" />
+                    : <Eye className="size-4" />}
                 </button>
               </div>
-              <Input
-                id="password"
-                name="password"
-                type={showPassword ? "text" : "password"}
-                placeholder="password"
-                required
-              />
             </div>
             {error && (
               <p className="text-sm font-medium text-destructive">{error}</p>
