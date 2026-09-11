@@ -25,7 +25,9 @@ export function Logs() {
         }
         const initial = await response.json() as LogEntry[];
         if (active) setEntries(initial);
-        const protocol = globalThis.location.protocol === "https:" ? "wss:" : "ws:";
+        const protocol = globalThis.location.protocol === "https:"
+          ? "wss:"
+          : "ws:";
         socket = new WebSocket(
           `${protocol}//${globalThis.location.host}/api/v1/logs/ws`,
         );

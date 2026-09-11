@@ -68,7 +68,9 @@ function App() {
           <Route path="/" element={<Navigate to="/dashboard" replace />} />
           <Route
             path="/change-password"
-            element={<ChangePassword onLogout={() => setIsAuthenticated(false)} />}
+            element={
+              <ChangePassword onLogout={() => setIsAuthenticated(false)} />
+            }
           />
 
           <Route
