@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO firewall_logs (timestamp, level, message, actor)\n             VALUES (unixepoch(), ?, ?, ?)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 3
+    },
+    "nullable": []
+  },
+  "hash": "46866c77818dc5a4bcc089a2bb852292ade78533d5b33fe6584570fa574ca7dd"
+}

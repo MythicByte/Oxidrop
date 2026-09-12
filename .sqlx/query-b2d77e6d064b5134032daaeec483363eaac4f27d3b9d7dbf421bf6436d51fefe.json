@@ -1,0 +1,170 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT\n                    tcp_rate_shift,\n                    tcp_burst,\n                    udp_rate_shift,\n                    udp_burst,\n                    icmp_rate_shift,\n                    icmp_burst,\n                    default_rate_shift,\n                    default_burst,\n                    protocol_allowed,\n                    ddos_activated AS \"ddos_activated: bool\",\n                    subnet_activated AS \"subnet_activated: bool\",\n                    incoming_ethernet_adapter,\n                    output_ethernet_adapter\n             FROM firewall_config\n             WHERE id = 1",
+  "describe": {
+    "columns": [
+      {
+        "name": "tcp_rate_shift",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "firewall_config",
+            "name": "tcp_rate_shift"
+          }
+        }
+      },
+      {
+        "name": "tcp_burst",
+        "ordinal": 1,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "firewall_config",
+            "name": "tcp_burst"
+          }
+        }
+      },
+      {
+        "name": "udp_rate_shift",
+        "ordinal": 2,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "firewall_config",
+            "name": "udp_rate_shift"
+          }
+        }
+      },
+      {
+        "name": "udp_burst",
+        "ordinal": 3,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "firewall_config",
+            "name": "udp_burst"
+          }
+        }
+      },
+      {
+        "name": "icmp_rate_shift",
+        "ordinal": 4,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "firewall_config",
+            "name": "icmp_rate_shift"
+          }
+        }
+      },
+      {
+        "name": "icmp_burst",
+        "ordinal": 5,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "firewall_config",
+            "name": "icmp_burst"
+          }
+        }
+      },
+      {
+        "name": "default_rate_shift",
+        "ordinal": 6,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "firewall_config",
+            "name": "default_rate_shift"
+          }
+        }
+      },
+      {
+        "name": "default_burst",
+        "ordinal": 7,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "firewall_config",
+            "name": "default_burst"
+          }
+        }
+      },
+      {
+        "name": "protocol_allowed",
+        "ordinal": 8,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "firewall_config",
+            "name": "protocol_allowed"
+          }
+        }
+      },
+      {
+        "name": "ddos_activated: bool",
+        "ordinal": 9,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "firewall_config",
+            "name": "ddos_activated"
+          }
+        }
+      },
+      {
+        "name": "subnet_activated: bool",
+        "ordinal": 10,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "firewall_config",
+            "name": "subnet_activated"
+          }
+        }
+      },
+      {
+        "name": "incoming_ethernet_adapter",
+        "ordinal": 11,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "firewall_config",
+            "name": "incoming_ethernet_adapter"
+          }
+        }
+      },
+      {
+        "name": "output_ethernet_adapter",
+        "ordinal": 12,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "firewall_config",
+            "name": "output_ethernet_adapter"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      true
+    ]
+  },
+  "hash": "b2d77e6d064b5134032daaeec483363eaac4f27d3b9d7dbf421bf6436d51fefe"
+}

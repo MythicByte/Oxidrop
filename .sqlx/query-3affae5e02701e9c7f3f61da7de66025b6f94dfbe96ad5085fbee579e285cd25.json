@@ -1,0 +1,69 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT id, username,\n                    CASE role WHEN 'admin' THEN 'Admin' ELSE 'Viewer' END AS role,\n                    action_permissions AS \"permissions: i32\",\n                    is_active AS \"is_active: bool\"\n             FROM users\n             ORDER BY id ASC",
+  "describe": {
+    "columns": [
+      {
+        "name": "id",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "users",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "name": "username",
+        "ordinal": 1,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "users",
+            "name": "username"
+          }
+        }
+      },
+      {
+        "name": "role",
+        "ordinal": 2,
+        "type_info": "Text",
+        "origin": "Expression"
+      },
+      {
+        "name": "permissions: i32",
+        "ordinal": 3,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "users",
+            "name": "action_permissions"
+          }
+        }
+      },
+      {
+        "name": "is_active: bool",
+        "ordinal": 4,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "users",
+            "name": "is_active"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "3affae5e02701e9c7f3f61da7de66025b6f94dfbe96ad5085fbee579e285cd25"
+}

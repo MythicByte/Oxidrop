@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "\n                    UPDATE users\n                    SET role = ?, action_permissions = ?, is_active = ?,\n                        password_hash = COALESCE(?, password_hash),\n                        password_must_be_changed = CASE WHEN ? IS NULL THEN password_must_be_changed ELSE 1 END\n                    WHERE username = ?\n                    ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 6
+    },
+    "nullable": []
+  },
+  "hash": "bf53aef9e3892b12a33255c912be8ca6f777f30a286f80dc9a1f97f49d725506"
+}
