@@ -5,6 +5,7 @@ use std::{
 };
 
 use anyhow::Context;
+use aya::maps::lpm_trie::Key;
 use axum_login::AuthManagerLayerBuilder;
 use clap::Parser;
 use hyper::StatusCode;
@@ -74,14 +75,24 @@ async fn main() -> anyhow::Result<()> {
         allow_list_v6,
         packet_counts_v4,
         packet_counts_v6,
-        subnet_matching_v4,
-        subnet_matching_v6,
+        mut subnet_matching_v4,
+        mut subnet_matching_v6,
     ) = ebpf_programm.get_maps()?;
 
     let db = db::Database::new("sqlite://oxidrop.db").await?;
     db.bootstrap_default_admin()
         .await
         .context("Failed to bootstrap the default admin user")?;
+    for (network, prefix_len, action) in db.list_subnet_v4().await? {
+        subnet_matching_v4
+            .insert(&Key::new(prefix_len, network.to_be()), action, 0)
+            .context("Failed to restore IPv4 subnet rule")?;
+    }
+    for (network, prefix_len, action) in db.list_subnet_v6().await? {
+        subnet_matching_v6
+            .insert(&Key::new(prefix_len, network), action, 0)
+            .context("Failed to restore IPv6 subnet rule")?;
+    }
     let persisted_firewall_config = db.load_firewall_config().await?;
     let mut firewall_config = persisted_firewall_config.unwrap_or_default();
     if persisted_firewall_config.is_none() {
