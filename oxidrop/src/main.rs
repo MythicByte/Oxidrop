@@ -90,7 +90,7 @@ async fn main() -> anyhow::Result<()> {
     }
     for (network, prefix_len, action) in db.list_subnet_v6().await? {
         subnet_matching_v6
-            .insert(&Key::new(prefix_len, network), action, 0)
+            .insert(&Key::new(prefix_len, network.map(u32::to_be)), action, 0)
             .context("Failed to restore IPv6 subnet rule")?;
     }
     let persisted_firewall_config = db.load_firewall_config().await?;
