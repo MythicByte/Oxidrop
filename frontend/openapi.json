@@ -367,6 +367,32 @@
       }
     },
     "/api/v1/config/subnet/v4": {
+      "get": {
+        "tags": [
+          "crate::state"
+        ],
+        "operationId": "list_subnet_matching_v4",
+        "responses": {
+          "200": {
+            "description": "List IPv4 subnet rules",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/SubnetMatchV4Update"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookie_auth": []
+          }
+        ]
+      },
       "post": {
         "tags": [
           "crate::state"
@@ -433,6 +459,32 @@
       }
     },
     "/api/v1/config/subnet/v6": {
+      "get": {
+        "tags": [
+          "crate::state"
+        ],
+        "operationId": "list_subnet_matching_v6",
+        "responses": {
+          "200": {
+            "description": "List IPv6 subnet rules",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/SubnetMatchV6Update"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookie_auth": []
+          }
+        ]
+      },
       "post": {
         "tags": [
           "crate::state"

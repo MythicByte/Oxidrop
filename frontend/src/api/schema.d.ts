@@ -115,7 +115,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        get: operations["list_subnet_matching_v4"];
         put?: never;
         post: operations["modify_subnet_matching_v4"];
         delete: operations["remove_subnet_matching_v4"];
@@ -131,7 +131,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        get: operations["list_subnet_matching_v6"];
         put?: never;
         post: operations["modify_subnet_matching_v6"];
         delete: operations["remove_subnet_matching_v6"];
@@ -905,6 +905,26 @@ export interface operations {
             };
         };
     };
+    list_subnet_matching_v4: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description List IPv4 subnet rules */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SubnetMatchV4Update"][];
+                };
+            };
+        };
+    };
     modify_subnet_matching_v4: {
         parameters: {
             query?: never;
@@ -974,6 +994,26 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    list_subnet_matching_v6: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description List IPv6 subnet rules */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SubnetMatchV6Update"][];
+                };
             };
         };
     };
