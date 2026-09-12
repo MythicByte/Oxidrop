@@ -18,6 +18,7 @@ use axum::{
 use bitflags::bitflags;
 use hyper::StatusCode;
 use oxidrop_common::{
+    Action,
     ActivaterEtherTypes,
     FirewallConfig,
     RateProfile,
@@ -101,9 +102,44 @@ pub enum UserError {
     TooLongPassword(String),
 }
 
+#[inline(always)]
+fn subnet_action(value: i64) -> Result<Action, UserError> {
+    match value {
+        0 => Ok(oxidrop_common::Action::Allow),
+        1 => Ok(oxidrop_common::Action::Deny),
+        _ => Err(UserError::Internal("invalid subnet action".into())),
+    }
+}
+
+#[inline(always)]
+fn require_subnet_permission(
+    caller: &CallerContext,
+    permission: ActionPermissions,
+) -> Result<(), UserError> {
+    if caller.role == RolesUser::Admin && caller.permissions.contains(permission) {
+        Ok(())
+    } else {
+        Err(UserError::LackingPermission)
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct Database {
     pub pool: SqlitePool,
+}
+
+#[derive(Debug, FromRow)]
+struct SubnetV4Row {
+    network: i64,
+    prefix_len: i64,
+    action: i64,
+}
+
+#[derive(Debug, FromRow)]
+struct SubnetV6Row {
+    network: Vec<u8>,
+    prefix_len: i64,
+    action: i64,
 }
 
 #[derive(Debug, FromRow)]
@@ -133,6 +169,136 @@ fn sqlite_integer(value: u64, field: &str) -> Result<i64, sqlx::Error> {
 }
 
 impl Database {
+    pub async fn list_subnet_v4(&self) -> Result<Vec<(u32, u32, Action)>, UserError> {
+        let rows = sqlx::query_as::<_, SubnetV4Row>(
+            "SELECT network, prefix_len, action
+             FROM subnet_match_v4
+             ORDER BY prefix_len DESC, network ASC",
+        )
+        .fetch_all(&self.pool)
+        .await?;
+
+        rows.into_iter()
+            .map(|row| {
+                let network = u32::try_from(row.network)
+                    .map_err(|_| UserError::Internal("invalid IPv4 subnet network".into()))?;
+                let prefix_len = u32::try_from(row.prefix_len)
+                    .map_err(|_| UserError::Internal("invalid IPv4 prefix length".into()))?;
+                let action = subnet_action(row.action)?;
+                Ok((network, prefix_len, action))
+            })
+            .collect()
+    }
+
+    pub async fn list_subnet_v6(&self) -> Result<Vec<([u32; 4], u32, Action)>, UserError> {
+        let rows = sqlx::query_as::<_, SubnetV6Row>(
+            "SELECT network, prefix_len, action
+             FROM subnet_match_v6
+             ORDER BY prefix_len DESC, network ASC",
+        )
+        .fetch_all(&self.pool)
+        .await?;
+
+        rows.into_iter()
+            .map(|row| {
+                if row.network.len() != 16 {
+                    return Err(UserError::Internal("invalid IPv6 subnet network".into()));
+                }
+                let mut network = [0_u32; 4];
+                for (index, word) in network.iter_mut().enumerate() {
+                    let bytes: [u8; 4] = row.network[index * 4..index * 4 + 4]
+                        .try_into()
+                        .map_err(|_| UserError::Internal("invalid IPv6 subnet network".into()))?;
+                    *word = u32::from_be_bytes(bytes);
+                }
+                let prefix_len = u32::try_from(row.prefix_len)
+                    .map_err(|_| UserError::Internal("invalid IPv6 prefix length".into()))?;
+                let action = subnet_action(row.action)?;
+                Ok((network, prefix_len, action))
+            })
+            .collect()
+    }
+
+    pub async fn save_subnet_v4(
+        &self,
+        caller: &CallerContext,
+        network: u32,
+        prefix_len: u32,
+        action: Action,
+    ) -> Result<(), UserError> {
+        require_subnet_permission(caller, ActionPermissions::MODIFY)?;
+        sqlx::query(
+            "INSERT INTO subnet_match_v4 (network, prefix_len, action)
+             VALUES (?, ?, ?)
+             ON CONFLICT(network, prefix_len) DO UPDATE SET action = excluded.action",
+        )
+        .bind(i64::from(network))
+        .bind(i64::from(prefix_len))
+        .bind(action as i64)
+        .execute(&self.pool)
+        .await?;
+        Ok(())
+    }
+
+    pub async fn save_subnet_v6(
+        &self,
+        caller: &CallerContext,
+        network: [u32; 4],
+        prefix_len: u32,
+        action: Action,
+    ) -> Result<(), UserError> {
+        require_subnet_permission(caller, ActionPermissions::MODIFY)?;
+        let bytes = network
+            .into_iter()
+            .flat_map(u32::to_be_bytes)
+            .collect::<Vec<_>>();
+        sqlx::query(
+            "INSERT INTO subnet_match_v6 (network, prefix_len, action)
+             VALUES (?, ?, ?)
+             ON CONFLICT(network, prefix_len) DO UPDATE SET action = excluded.action",
+        )
+        .bind(bytes)
+        .bind(i64::from(prefix_len))
+        .bind(action as i64)
+        .execute(&self.pool)
+        .await?;
+        Ok(())
+    }
+
+    pub async fn delete_subnet_v4(
+        &self,
+        caller: &CallerContext,
+        network: u32,
+        prefix_len: u32,
+    ) -> Result<(), UserError> {
+        require_subnet_permission(caller, ActionPermissions::DELETE)?;
+        sqlx::query("DELETE FROM subnet_match_v4 WHERE network = ? AND prefix_len = ?")
+            .bind(i64::from(network))
+            .bind(i64::from(prefix_len))
+            .execute(&self.pool)
+            .await?;
+        Ok(())
+    }
+
+    pub async fn delete_subnet_v6(
+        &self,
+        caller: &CallerContext,
+        network: [u32; 4],
+        prefix_len: u32,
+    ) -> Result<(), UserError> {
+        require_subnet_permission(caller, ActionPermissions::DELETE)?;
+        let bytes = network
+            .into_iter()
+            .flat_map(u32::to_be_bytes)
+            .collect::<Vec<_>>();
+        sqlx::query("DELETE FROM subnet_match_v6 WHERE network = ? AND prefix_len = ?")
+            .bind(bytes)
+            .bind(i64::from(prefix_len))
+            .execute(&self.pool)
+            .await?;
+        Ok(())
+    }
+
     pub async fn save_firewall_config(&self, config: &FirewallConfig) -> Result<(), sqlx::Error> {
         let tcp_rate_shift = sqlite_integer(config.tcp_profile.rate_shift, "tcp_rate_shift")?;
         let tcp_burst = sqlite_integer(config.tcp_profile.burst, "tcp_burst")?;
@@ -686,6 +852,32 @@ mod tests {
             role: RolesUser::Admin,
             permissions: ActionPermissions::all(),
         }
+    }
+
+    #[tokio::test]
+    async fn test_subnet_mutations_require_rbac_permissions() {
+        let db = setup_test_db().await;
+        let viewer_ctx = CallerContext {
+            role: RolesUser::Viewer,
+            permissions: ActionPermissions::all(),
+        };
+        let admin_ctx = admin_ctx();
+
+        assert!(matches!(
+            db.save_subnet_v4(&viewer_ctx, 0x0a000100, 24, Action::Allow)
+                .await,
+            Err(UserError::LackingPermission)
+        ));
+        db.save_subnet_v4(&admin_ctx, 0x0a000100, 24, Action::Allow)
+            .await
+            .expect("authorized subnet write should succeed");
+        assert!(matches!(
+            db.delete_subnet_v4(&viewer_ctx, 0x0a000100, 24).await,
+            Err(UserError::LackingPermission)
+        ));
+        db.delete_subnet_v4(&admin_ctx, 0x0a000100, 24)
+            .await
+            .expect("authorized subnet delete should succeed");
     }
 
     #[tokio::test]
