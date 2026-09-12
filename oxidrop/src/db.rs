@@ -205,11 +205,9 @@ impl Database {
                     return Err(UserError::Internal("invalid IPv6 subnet network".into()));
                 }
                 let mut network = [0_u32; 4];
-                for (index, word) in network.iter_mut().enumerate() {
-                    let bytes: [u8; 4] = row.network[index * 4..index * 4 + 4]
-                        .try_into()
-                        .map_err(|_| UserError::Internal("invalid IPv6 subnet network".into()))?;
-                    *word = u32::from_be_bytes(bytes);
+                let (chunks, _) = row.network.as_chunks::<4>();
+                for (word, bytes) in network.iter_mut().zip(chunks) {
+                    *word = u32::from_be_bytes(*bytes);
                 }
                 let prefix_len = u32::try_from(row.prefix_len)
                     .map_err(|_| UserError::Internal("invalid IPv6 prefix length".into()))?;
