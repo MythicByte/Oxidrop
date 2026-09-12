@@ -13,10 +13,12 @@ import { Logs } from "./components/logs.tsx";
 import { ChangePassword } from "./components/change-password.tsx";
 
 function AppRoutes() {
-  const [user, setUser] = useState<{
-    username: string;
-    password_must_be_changed: boolean;
-  } | null>(null);
+  const [user, setUser] = useState<
+    {
+      username: string;
+      password_must_be_changed: boolean;
+    } | null
+  >(null);
   const [authChecked, setAuthChecked] = useState(false);
 
   useEffect(() => {

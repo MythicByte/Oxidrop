@@ -52,7 +52,9 @@ export function LoginForm({ onAuthenticated }: LoginFormProps) {
 
       const userResponse = await client.GET("/api/v1/get_user");
       if (!userResponse.response.ok || !userResponse.data) {
-        setError("Login succeeded, but the secure session could not be verified.");
+        setError(
+          "Login succeeded, but the secure session could not be verified.",
+        );
         return;
       }
 

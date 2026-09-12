@@ -52,9 +52,7 @@ function parseIpv4(value: string): number | null {
   if (octets.length !== 4) return null;
   const parsed = octets.map(Number);
   if (
-    parsed.some((octet) =>
-      !Number.isInteger(octet) || octet < 0 || octet > 255
-    )
+    parsed.some((octet) => !Number.isInteger(octet) || octet < 0 || octet > 255)
   ) return null;
   return parsed.reduce((network, octet) => network * 256 + octet, 0);
 }
@@ -70,7 +68,9 @@ function parseIpv6(value: string): number[] | null {
   const values = groups.map((group) => Number.parseInt(group, 16));
   if (
     values.length !== 8 ||
-    values.some((group) => !Number.isInteger(group) || group < 0 || group > 0xffff)
+    values.some((group) =>
+      !Number.isInteger(group) || group < 0 || group > 0xffff
+    )
   ) return null;
   return [0, 2, 4, 6].map((offset) =>
     values[offset] * 0x10000 + values[offset + 1]
@@ -173,12 +173,12 @@ export function FirewallConfiguration() {
         // Fetch RBAC, Config, and Adapters in parallel
         const [rbacRes, configRes, adapterRes, subnetV4Res, subnetV6Res] =
           await Promise.all([
-          client.GET("/api/v1/role_and_permissions"),
-          client.GET("/api/v1/config"),
-          client.GET("/api/v1/config/adapters"),
-          fetch("/api/v1/config/subnet/v4", { credentials: "include" }),
-          fetch("/api/v1/config/subnet/v6", { credentials: "include" }),
-        ]);
+            client.GET("/api/v1/role_and_permissions"),
+            client.GET("/api/v1/config"),
+            client.GET("/api/v1/config/adapters"),
+            fetch("/api/v1/config/subnet/v4", { credentials: "include" }),
+            fetch("/api/v1/config/subnet/v6", { credentials: "include" }),
+          ]);
 
         if (rbacRes.response.ok && rbacRes.data) {
           setPermissions(rbacRes.data.permissions);
@@ -199,7 +199,10 @@ export function FirewallConfiguration() {
             action: SubnetAction;
           }>;
           setSubnetV4Rules(
-            rules.map((rule) => ({ ...rule, address: formatIpv4(rule.network) })),
+            rules.map((rule) => ({
+              ...rule,
+              address: formatIpv4(rule.network),
+            })),
           );
         }
         if (subnetV6Res.ok) {
@@ -209,7 +212,10 @@ export function FirewallConfiguration() {
             action: SubnetAction;
           }>;
           setSubnetV6Rules(
-            rules.map((rule) => ({ ...rule, address: formatIpv6(rule.network) })),
+            rules.map((rule) => ({
+              ...rule,
+              address: formatIpv6(rule.network),
+            })),
           );
         }
       } catch (error) {
@@ -240,97 +246,133 @@ export function FirewallConfiguration() {
   }, []);
 
   const addSubnetV4 = async () => {
-        const network = parseIpv4(subnetV4Address);
-        const prefix_len = Number(subnetV4Prefix);
-        if (network === null || !Number.isInteger(prefix_len) || prefix_len < 0 || prefix_len > 32) {
-          setAttachmentNotice({ kind: "error", message: "Enter a valid IPv4 network and prefix length." });
-          return;
-        }
-        const rule = { network, prefix_len, action: subnetV4Action };
-        const { response } = await client.POST("/api/v1/config/subnet/v4", { body: rule });
-        if (!response.ok) {
-          setAttachmentNotice({ kind: "error", message: "Failed to add the IPv4 subnet rule." });
-          return;
-        }
-        setSubnetV4Rules((current) => [
-          ...current.filter((item) => !(item.network === network && item.prefix_len === prefix_len)),
-          { ...rule, address: subnetV4Address },
-        ]);
-        setSubnetV4Address("");
+    const network = parseIpv4(subnetV4Address);
+    const prefix_len = Number(subnetV4Prefix);
+    if (
+      network === null || !Number.isInteger(prefix_len) || prefix_len < 0 ||
+      prefix_len > 32
+    ) {
+      setAttachmentNotice({
+        kind: "error",
+        message: "Enter a valid IPv4 network and prefix length.",
+      });
+      return;
+    }
+    const rule = { network, prefix_len, action: subnetV4Action };
+    const { response } = await client.POST("/api/v1/config/subnet/v4", {
+      body: rule,
+    });
+    if (!response.ok) {
+      setAttachmentNotice({
+        kind: "error",
+        message: "Failed to add the IPv4 subnet rule.",
+      });
+      return;
+    }
+    setSubnetV4Rules((current) => [
+      ...current.filter((item) =>
+        !(item.network === network && item.prefix_len === prefix_len)
+      ),
+      { ...rule, address: subnetV4Address },
+    ]);
+    setSubnetV4Address("");
   };
 
   const addSubnetV6 = async () => {
-        const network = parseIpv6(subnetV6Address);
-        const prefix_len = Number(subnetV6Prefix);
-        if (network === null || !Number.isInteger(prefix_len) || prefix_len < 0 || prefix_len > 128) {
-          setAttachmentNotice({ kind: "error", message: "Enter a valid IPv6 network and prefix length." });
-          return;
-        }
-        const rule = { network, prefix_len, action: subnetV6Action };
-        const { response } = await client.POST("/api/v1/config/subnet/v6", { body: rule });
-        if (!response.ok) {
-          setAttachmentNotice({ kind: "error", message: "Failed to add the IPv6 subnet rule." });
-          return;
-        }
-        setSubnetV6Rules((current) => [
-          ...current.filter((item) =>
-            !(item.network.every((word, index) => word === network[index]) &&
-              item.prefix_len === prefix_len)
-          ),
-          { ...rule, address: subnetV6Address },
-        ]);
-        setSubnetV6Address("");
+    const network = parseIpv6(subnetV6Address);
+    const prefix_len = Number(subnetV6Prefix);
+    if (
+      network === null || !Number.isInteger(prefix_len) || prefix_len < 0 ||
+      prefix_len > 128
+    ) {
+      setAttachmentNotice({
+        kind: "error",
+        message: "Enter a valid IPv6 network and prefix length.",
+      });
+      return;
+    }
+    const rule = { network, prefix_len, action: subnetV6Action };
+    const { response } = await client.POST("/api/v1/config/subnet/v6", {
+      body: rule,
+    });
+    if (!response.ok) {
+      setAttachmentNotice({
+        kind: "error",
+        message: "Failed to add the IPv6 subnet rule.",
+      });
+      return;
+    }
+    setSubnetV6Rules((current) => [
+      ...current.filter((item) =>
+        !(item.network.every((word, index) => word === network[index]) &&
+          item.prefix_len === prefix_len)
+      ),
+      { ...rule, address: subnetV6Address },
+    ]);
+    setSubnetV6Address("");
   };
 
   const removeSubnetV4 = async (rule: SubnetV4Rule) => {
-        const { response } = await client.DELETE("/api/v1/config/subnet/v4", {
-          body: { network: rule.network, prefix_len: rule.prefix_len, action: rule.action },
-        });
-        if (response.ok) setSubnetV4Rules((current) => current.filter((item) => item !== rule));
+    const { response } = await client.DELETE("/api/v1/config/subnet/v4", {
+      body: {
+        network: rule.network,
+        prefix_len: rule.prefix_len,
+        action: rule.action,
+      },
+    });
+    if (response.ok) {
+      setSubnetV4Rules((current) => current.filter((item) => item !== rule));
+    }
   };
 
   const removeSubnetV6 = async (rule: SubnetV6Rule) => {
-        const { response } = await client.DELETE("/api/v1/config/subnet/v6", {
-          body: { network: rule.network, prefix_len: rule.prefix_len, action: rule.action },
-        });
-        if (response.ok) setSubnetV6Rules((current) => current.filter((item) => item !== rule));
+    const { response } = await client.DELETE("/api/v1/config/subnet/v6", {
+      body: {
+        network: rule.network,
+        prefix_len: rule.prefix_len,
+        action: rule.action,
+      },
+    });
+    if (response.ok) {
+      setSubnetV6Rules((current) => current.filter((item) => item !== rule));
+    }
   };
 
   const updatePolicy = async (
-        field: "ddos_activated" | "subnet_activated",
-        enabled: boolean,
-      ) => {
-        const previous = config[field];
-        setConfig((current) => ({ ...current, [field]: enabled }));
-        try {
-          const { response, data } = await client.POST("/api/v1/config", {
-            body: { [field]: enabled },
-          });
-          if (!response.ok || !data) {
-            setConfig((current) => ({ ...current, [field]: previous }));
-            setAttachmentNotice({
-              kind: "error",
-              message: `Failed to ${enabled ? "enable" : "disable"} ${
-                field === "ddos_activated" ? "DDoS protection" : "subnet matching"
-              }.`,
-            });
-            return;
-          }
-          setConfig((current) => ({ ...current, [field]: enabled }));
-          setAttachmentNotice({
-            kind: "success",
-            message: `${field === "ddos_activated" ? "DDoS protection" : "Subnet matching"} ${
-              enabled ? "enabled" : "disabled"
-            }.`,
-          });
-        } catch (error) {
-          console.error(`Failed to update ${field}:`, error);
-          setConfig((current) => ({ ...current, [field]: previous }));
-          setAttachmentNotice({
-            kind: "error",
-            message: "The firewall policy could not be updated.",
-          });
-        }
+    field: "ddos_activated" | "subnet_activated",
+    enabled: boolean,
+  ) => {
+    const previous = config[field];
+    setConfig((current) => ({ ...current, [field]: enabled }));
+    try {
+      const { response, data } = await client.POST("/api/v1/config", {
+        body: { [field]: enabled },
+      });
+      if (!response.ok || !data) {
+        setConfig((current) => ({ ...current, [field]: previous }));
+        setAttachmentNotice({
+          kind: "error",
+          message: `Failed to ${enabled ? "enable" : "disable"} ${
+            field === "ddos_activated" ? "DDoS protection" : "subnet matching"
+          }.`,
+        });
+        return;
+      }
+      setConfig((current) => ({ ...current, [field]: enabled }));
+      setAttachmentNotice({
+        kind: "success",
+        message: `${
+          field === "ddos_activated" ? "DDoS protection" : "Subnet matching"
+        } ${enabled ? "enabled" : "disabled"}.`,
+      });
+    } catch (error) {
+      console.error(`Failed to update ${field}:`, error);
+      setConfig((current) => ({ ...current, [field]: previous }));
+      setAttachmentNotice({
+        kind: "error",
+        message: "The firewall policy could not be updated.",
+      });
+    }
   };
 
   const handleSave = async () => {
@@ -472,7 +514,7 @@ export function FirewallConfiguration() {
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="space-y-2">
-              <Label>Incoming Adapter </Label>
+              <Label>Incoming Adapter</Label>
               <Select
                 disabled={!hasModify}
                 value={config.incoming_ethernet_adapter?.toString() ?? "none"}
@@ -506,7 +548,7 @@ export function FirewallConfiguration() {
             </div>
 
             <div className="space-y-2">
-              <Label>Outgoing Adapter </Label>
+              <Label>Outgoing Adapter</Label>
               <Select
                 disabled={!hasModify}
                 value={config.output_ethernet_adapter?.toString() ?? "none"}
@@ -795,7 +837,8 @@ export function FirewallConfiguration() {
                 <Select
                   disabled={!hasModify}
                   value={subnetV4Action}
-                  onValueChange={(value) => setSubnetV4Action(value as SubnetAction)}
+                  onValueChange={(value) =>
+                    setSubnetV4Action(value as SubnetAction)}
                 >
                   <SelectTrigger aria-label="IPv4 subnet action">
                     <SelectValue />
@@ -805,14 +848,27 @@ export function FirewallConfiguration() {
                     <SelectItem value="Deny">Deny</SelectItem>
                   </SelectContent>
                 </Select>
-                <Button type="button" disabled={!hasModify} onClick={() => void addSubnetV4()}>
+                <Button
+                  type="button"
+                  disabled={!hasModify}
+                  onClick={() => void addSubnetV4()}
+                >
                   <Plus className="size-4" /> Add
                 </Button>
               </div>
               {subnetV4Rules.map((rule) => (
-                <div key={`${rule.network}/${rule.prefix_len}`} className="flex items-center justify-between rounded border px-3 py-2 text-sm">
+                <div
+                  key={`${rule.network}/${rule.prefix_len}`}
+                  className="flex items-center justify-between rounded border px-3 py-2 text-sm"
+                >
                   <span>{rule.address}/{rule.prefix_len} · {rule.action}</span>
-                  <Button type="button" variant="ghost" disabled={!hasModify} onClick={() => void removeSubnetV4(rule)} aria-label={`Delete IPv4 subnet ${rule.address}`}>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    disabled={!hasModify}
+                    onClick={() => void removeSubnetV4(rule)}
+                    aria-label={`Delete IPv4 subnet ${rule.address}`}
+                  >
                     <Trash2 className="size-4" />
                   </Button>
                 </div>
@@ -846,7 +902,8 @@ export function FirewallConfiguration() {
                 <Select
                   disabled={!hasModify}
                   value={subnetV6Action}
-                  onValueChange={(value) => setSubnetV6Action(value as SubnetAction)}
+                  onValueChange={(value) =>
+                    setSubnetV6Action(value as SubnetAction)}
                 >
                   <SelectTrigger aria-label="IPv6 subnet action">
                     <SelectValue />
@@ -856,14 +913,27 @@ export function FirewallConfiguration() {
                     <SelectItem value="Deny">Deny</SelectItem>
                   </SelectContent>
                 </Select>
-                <Button type="button" disabled={!hasModify} onClick={() => void addSubnetV6()}>
+                <Button
+                  type="button"
+                  disabled={!hasModify}
+                  onClick={() => void addSubnetV6()}
+                >
                   <Plus className="size-4" /> Add
                 </Button>
               </div>
               {subnetV6Rules.map((rule) => (
-                <div key={`${rule.address}/${rule.prefix_len}`} className="flex items-center justify-between rounded border px-3 py-2 text-sm">
+                <div
+                  key={`${rule.address}/${rule.prefix_len}`}
+                  className="flex items-center justify-between rounded border px-3 py-2 text-sm"
+                >
                   <span>{rule.address}/{rule.prefix_len} · {rule.action}</span>
-                  <Button type="button" variant="ghost" disabled={!hasModify} onClick={() => void removeSubnetV6(rule)} aria-label={`Delete IPv6 subnet ${rule.address}`}>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    disabled={!hasModify}
+                    onClick={() => void removeSubnetV6(rule)}
+                    aria-label={`Delete IPv6 subnet ${rule.address}`}
+                  >
                     <Trash2 className="size-4" />
                   </Button>
                 </div>

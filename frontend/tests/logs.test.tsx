@@ -89,7 +89,9 @@ describe("Logs", () => {
   });
 
   it("shows the API error instead of an empty success state", async () => {
-    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+    const consoleError = vi.spyOn(console, "error").mockImplementation(
+      () => {},
+    );
     vi.mocked(fetch).mockResolvedValueOnce(
       new Response(null, { status: 503, statusText: "Service Unavailable" }),
     );
@@ -99,7 +101,11 @@ describe("Logs", () => {
     await waitFor(() => {
       expect(screen.getAllByText("Log request failed (503)")).toHaveLength(2);
     });
-    expect(screen.getByText("Events emitted by the firewall and HTTP control plane appear here."))
+    expect(
+      screen.getByText(
+        "Events emitted by the firewall and HTTP control plane appear here.",
+      ),
+    )
       .toBeInTheDocument();
     expect(consoleError).toHaveBeenCalledWith(
       "Failed to load firewall logs:",
