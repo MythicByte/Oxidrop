@@ -1037,7 +1037,7 @@ pub async fn modify_subnet_matching_v4(
         }
         if let Err(error) = state
             .db
-            .save_subnet_v4(payload.network, payload.prefix_len, payload.action)
+            .save_subnet_v4(&caller, payload.network, payload.prefix_len, payload.action)
             .await
         {
             tracing::error!("failed to persist IPv4 subnet rule: {error}");
@@ -1092,7 +1092,7 @@ pub async fn remove_subnet_matching_v4(
         }
         if let Err(error) = state
             .db
-            .delete_subnet_v4(payload.network, payload.prefix_len)
+            .delete_subnet_v4(&caller, payload.network, payload.prefix_len)
             .await
         {
             tracing::error!("failed to delete IPv4 subnet rule: {error}");
@@ -1178,7 +1178,7 @@ pub async fn modify_subnet_matching_v6(
         }
         if let Err(error) = state
             .db
-            .save_subnet_v6(payload.network, payload.prefix_len, payload.action)
+            .save_subnet_v6(&caller, payload.network, payload.prefix_len, payload.action)
             .await
         {
             tracing::error!("failed to persist IPv6 subnet rule: {error}");
@@ -1233,7 +1233,7 @@ pub async fn remove_subnet_matching_v6(
         }
         if let Err(error) = state
             .db
-            .delete_subnet_v6(payload.network, payload.prefix_len)
+            .delete_subnet_v6(&caller, payload.network, payload.prefix_len)
             .await
         {
             tracing::error!("failed to delete IPv6 subnet rule: {error}");
