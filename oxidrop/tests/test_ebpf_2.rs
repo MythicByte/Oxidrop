@@ -299,7 +299,7 @@ fn test_ipv4_subnet_matching_slash24() {
         LpmTrie::try_from(harness.ebpf.map_mut("SUBNET_MATCHING_V4").unwrap()).unwrap();
 
     let subnet_addr = u32::from_be_bytes([192, 168, 1, 0]);
-    let subnet_key = Key::new(24, subnet_addr);
+    let subnet_key = Key::new(24, subnet_addr.to_be());
     subnet_map.insert(&subnet_key, Action::Allow, 0).unwrap();
 
     let flow = Ipv4Packet::new(

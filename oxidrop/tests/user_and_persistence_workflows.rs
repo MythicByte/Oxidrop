@@ -68,7 +68,10 @@ async fn bootstrap_creates_forced_change_admin_and_authentication_updates_login_
             .fetch_one(&database.pool)
             .await
             .expect("last-login query should succeed");
-    assert!(last_login_at.is_some(), "successful login must update last_login_at");
+    assert!(
+        last_login_at.is_some(),
+        "successful login must update last_login_at"
+    );
 }
 
 #[tokio::test]
@@ -120,12 +123,16 @@ async fn create_user_persists_password_change_policy_and_enforces_password_valid
         .await
         .expect("user creation should succeed");
 
-    assert!(authenticate(&database, "operator", VALID_PASSWORD)
-        .await
-        .password_must_be_changed);
-    assert!(!authenticate(&database, "auditor", "DifferentValidPassword123!")
-        .await
-        .password_must_be_changed);
+    assert!(
+        authenticate(&database, "operator", VALID_PASSWORD)
+            .await
+            .password_must_be_changed
+    );
+    assert!(
+        !authenticate(&database, "auditor", "DifferentValidPassword123!")
+            .await
+            .password_must_be_changed
+    );
 
     let weak_password = database
         .create_user(
@@ -208,11 +215,20 @@ async fn firewall_config_round_trip_preserves_all_persisted_fields() {
         .expect("configuration load should succeed")
         .expect("saved configuration should exist");
 
-    assert_eq!(actual.tcp_profile.rate_shift, expected.tcp_profile.rate_shift);
+    assert_eq!(
+        actual.tcp_profile.rate_shift,
+        expected.tcp_profile.rate_shift
+    );
     assert_eq!(actual.tcp_profile.burst, expected.tcp_profile.burst);
-    assert_eq!(actual.udp_profile.rate_shift, expected.udp_profile.rate_shift);
+    assert_eq!(
+        actual.udp_profile.rate_shift,
+        expected.udp_profile.rate_shift
+    );
     assert_eq!(actual.udp_profile.burst, expected.udp_profile.burst);
-    assert_eq!(actual.icmp_profile.rate_shift, expected.icmp_profile.rate_shift);
+    assert_eq!(
+        actual.icmp_profile.rate_shift,
+        expected.icmp_profile.rate_shift
+    );
     assert_eq!(actual.icmp_profile.burst, expected.icmp_profile.burst);
     assert_eq!(
         actual.default_profile.rate_shift,
@@ -244,7 +260,10 @@ async fn firewall_log_schema_rejects_invalid_enum_values_without_inserting() {
     .execute(&database.pool)
     .await;
 
-    assert!(result.is_err(), "invalid log level must fail the schema check");
+    assert!(
+        result.is_err(),
+        "invalid log level must fail the schema check"
+    );
     let count: i64 = sqlx::query_scalar!(
         "SELECT COUNT(*) FROM firewall_logs WHERE message = 'must not persist'"
     )

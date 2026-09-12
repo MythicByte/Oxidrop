@@ -89,10 +89,10 @@ impl XdpTestHarness {
             LpmTrie::try_from(self.ebpf.map_mut("SUBNET_MATCHING_V4").unwrap()).unwrap();
 
         // Insert BOTH source AND destination (your network + your server)
-        let src_key = Key::new(32, flow.source_addr);
+        let src_key = Key::new(32, flow.source_addr.to_be());
         subnet_map.insert(&src_key, Action::Allow, 0).unwrap();
 
-        let dst_key = Key::new(32, flow.destination_addr);
+        let dst_key = Key::new(32, flow.destination_addr.to_be());
         subnet_map.insert(&dst_key, Action::Allow, 0).unwrap();
 
         // Insert BOTH directions into allow list
@@ -134,10 +134,10 @@ impl XdpTestHarness {
             LpmTrie::try_from(self.ebpf.map_mut("SUBNET_MATCHING_V6").unwrap()).unwrap();
 
         // Insert BOTH source AND destination
-        let src_key = Key::new(128, flow.source_addr);
+        let src_key = Key::new(128, flow.source_addr.map(u32::to_be));
         subnet_map.insert(&src_key, Action::Allow, 0).unwrap();
 
-        let dst_key = Key::new(128, flow.destination_addr);
+        let dst_key = Key::new(128, flow.destination_addr.map(u32::to_be));
         subnet_map.insert(&dst_key, Action::Allow, 0).unwrap();
 
         // Insert BOTH directions into allow list
