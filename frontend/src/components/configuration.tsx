@@ -77,6 +77,41 @@ function parseIpv6(value: string): number[] | null {
   );
 }
 
+function formatIpv4(network: number): string {
+  return [
+    network >>> 24,
+    (network >>> 16) & 255,
+    (network >>> 8) & 255,
+    network & 255,
+  ].join(".");
+}
+
+function formatIpv6(network: number[]): string {
+  const groups = network.flatMap((word) => [
+    Math.floor(word / 0x10000).toString(16),
+    (word % 0x10000).toString(16),
+  ]);
+  let bestStart = -1;
+  let bestLength = 0;
+  for (let start = 0; start < groups.length;) {
+    if (groups[start] !== "0") {
+      start += 1;
+      continue;
+    }
+    let end = start;
+    while (end < groups.length && groups[end] === "0") end += 1;
+    if (end - start > bestLength) {
+      bestStart = start;
+      bestLength = end - start;
+    }
+    start = end;
+  }
+  if (bestLength < 2) return groups.join(":");
+  const left = groups.slice(0, bestStart).join(":");
+  const right = groups.slice(bestStart + bestLength).join(":");
+  return `${left}::${right}`;
+}
+
 function formatBytes(value: number): string {
   if (value < 1024) return `${value} B`;
   if (value < 1024 ** 2) return `${(value / 1024).toFixed(1)} KiB`;
@@ -136,10 +171,13 @@ export function FirewallConfiguration() {
     async function fetchState() {
       try {
         // Fetch RBAC, Config, and Adapters in parallel
-        const [rbacRes, configRes, adapterRes] = await Promise.all([
+        const [rbacRes, configRes, adapterRes, subnetV4Res, subnetV6Res] =
+          await Promise.all([
           client.GET("/api/v1/role_and_permissions"),
           client.GET("/api/v1/config"),
           client.GET("/api/v1/config/adapters"),
+          fetch("/api/v1/config/subnet/v4", { credentials: "include" }),
+          fetch("/api/v1/config/subnet/v6", { credentials: "include" }),
         ]);
 
         if (rbacRes.response.ok && rbacRes.data) {
@@ -153,6 +191,26 @@ export function FirewallConfiguration() {
         }
         if (adapterRes.response.ok && adapterRes.data) {
           setAdapters(adapterRes.data as AdapterResponse);
+        }
+        if (subnetV4Res.ok) {
+          const rules = await subnetV4Res.json() as Array<{
+            network: number;
+            prefix_len: number;
+            action: SubnetAction;
+          }>;
+          setSubnetV4Rules(
+            rules.map((rule) => ({ ...rule, address: formatIpv4(rule.network) })),
+          );
+        }
+        if (subnetV6Res.ok) {
+          const rules = await subnetV6Res.json() as Array<{
+            network: number[];
+            prefix_len: number;
+            action: SubnetAction;
+          }>;
+          setSubnetV6Rules(
+            rules.map((rule) => ({ ...rule, address: formatIpv6(rule.network) })),
+          );
         }
       } catch (error) {
         console.error("Failed to load firewall state:", error);
@@ -236,6 +294,43 @@ export function FirewallConfiguration() {
           body: { network: rule.network, prefix_len: rule.prefix_len, action: rule.action },
         });
         if (response.ok) setSubnetV6Rules((current) => current.filter((item) => item !== rule));
+  };
+
+  const updatePolicy = async (
+        field: "ddos_activated" | "subnet_activated",
+        enabled: boolean,
+      ) => {
+        const previous = config[field];
+        setConfig((current) => ({ ...current, [field]: enabled }));
+        try {
+          const { response, data } = await client.POST("/api/v1/config", {
+            body: { [field]: enabled },
+          });
+          if (!response.ok || !data) {
+            setConfig((current) => ({ ...current, [field]: previous }));
+            setAttachmentNotice({
+              kind: "error",
+              message: `Failed to ${enabled ? "enable" : "disable"} ${
+                field === "ddos_activated" ? "DDoS protection" : "subnet matching"
+              }.`,
+            });
+            return;
+          }
+          setConfig((current) => ({ ...current, [field]: enabled }));
+          setAttachmentNotice({
+            kind: "success",
+            message: `${field === "ddos_activated" ? "DDoS protection" : "Subnet matching"} ${
+              enabled ? "enabled" : "disabled"
+            }.`,
+          });
+        } catch (error) {
+          console.error(`Failed to update ${field}:`, error);
+          setConfig((current) => ({ ...current, [field]: previous }));
+          setAttachmentNotice({
+            kind: "error",
+            message: "The firewall policy could not be updated.",
+          });
+        }
   };
 
   const handleSave = async () => {
@@ -654,8 +749,8 @@ export function FirewallConfiguration() {
               <Switch
                 disabled={!hasModify}
                 checked={config.ddos_activated ?? true}
-                onCheckedChange={(c) =>
-                  setConfig({ ...config, ddos_activated: c })}
+                onCheckedChange={(checked) =>
+                  updatePolicy("ddos_activated", checked)}
               />
             </div>
             <div className="flex items-center justify-between rounded-lg border p-2.5">
@@ -669,7 +764,7 @@ export function FirewallConfiguration() {
                 disabled={!hasModify}
                 checked={config.subnet_activated ?? true}
                 onCheckedChange={(checked) =>
-                  setConfig({ ...config, subnet_activated: checked })}
+                  updatePolicy("subnet_activated", checked)}
               />
             </div>
             <div className="space-y-4 rounded-lg border p-3">
