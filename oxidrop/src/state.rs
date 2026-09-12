@@ -1168,7 +1168,10 @@ pub async fn modify_subnet_matching_v6(
 
         let mut map = state.subnet_matching_v6.write().await;
 
-        let key = Key::new(payload.prefix_len, payload.network);
+        let key = Key::new(
+            payload.prefix_len,
+            payload.network.map(u32::to_be),
+        );
         if map.insert(&key, payload.action, 0).is_err() {
             return (
                 StatusCode::INTERNAL_SERVER_ERROR,
@@ -1223,7 +1226,10 @@ pub async fn remove_subnet_matching_v6(
 
         let mut map = state.subnet_matching_v6.write().await;
 
-        let key = Key::new(payload.prefix_len, payload.network);
+        let key = Key::new(
+            payload.prefix_len,
+            payload.network.map(u32::to_be),
+        );
         if map.remove(&key).is_err() {
             return (
                 StatusCode::INTERNAL_SERVER_ERROR,
