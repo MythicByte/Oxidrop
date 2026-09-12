@@ -115,8 +115,10 @@ use crate::{
         crate::state::clear_packet_counts_v6,
 
         // Subnets
+        crate::state::list_subnet_matching_v4,
         crate::state::modify_subnet_matching_v4,
         crate::state::remove_subnet_matching_v4,
+        crate::state::list_subnet_matching_v6,
         crate::state::modify_subnet_matching_v6,
         crate::state::remove_subnet_matching_v6,
     ),

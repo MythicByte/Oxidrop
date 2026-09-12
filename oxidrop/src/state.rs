@@ -472,6 +472,38 @@ async fn stream_logs(mut socket: WebSocket, mut receiver: broadcast::Receiver<Lo
 }
 
 #[utoipa::path(
+    get,
+    path = "/api/v1/config/subnet/v4",
+    responses((status = 200, description = "List IPv4 subnet rules", body = [SubnetMatchV4Update])),
+    security(("cookie_auth" = []))
+)]
+pub async fn list_subnet_matching_v4(
+    State(state): State<FirewallState>,
+    auth_session: AuthSession<Database>,
+) -> impl IntoResponse {
+    if auth_session.user.is_none() {
+        return StatusCode::UNAUTHORIZED.into_response();
+    }
+    match state.db.list_subnet_v4().await {
+        Ok(entries) => Json(
+            entries
+                .into_iter()
+                .map(|(network, prefix_len, action)| SubnetMatchV4Update {
+                    network,
+                    prefix_len,
+                    action,
+                })
+                .collect::<Vec<_>>(),
+        )
+        .into_response(),
+        Err(error) => {
+            tracing::error!("failed to list IPv4 subnet rules: {error}");
+            StatusCode::INTERNAL_SERVER_ERROR.into_response()
+        }
+    }
+}
+
+#[utoipa::path(
     post,
     path = "/api/v1/config",
     request_body = ConfigPatch,
@@ -995,13 +1027,22 @@ pub async fn modify_subnet_matching_v4(
 
         let mut map = state.subnet_matching_v4.write().await;
 
-        let key = Key::new(payload.prefix_len, payload.network);
+        let key = Key::new(payload.prefix_len, payload.network.to_be());
         if map.insert(&key, payload.action, 0).is_err() {
             return (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 "Failed to insert into SUBNET_MATCHING_V4",
             )
                 .into_response();
+        }
+        if let Err(error) = state
+            .db
+            .save_subnet_v4(payload.network, payload.prefix_len, payload.action)
+            .await
+        {
+            tracing::error!("failed to persist IPv4 subnet rule: {error}");
+            let _ = map.remove(&key);
+            return StatusCode::INTERNAL_SERVER_ERROR.into_response();
         }
         StatusCode::OK.into_response()
     } else {
@@ -1041,7 +1082,7 @@ pub async fn remove_subnet_matching_v4(
 
         let mut map = state.subnet_matching_v4.write().await;
 
-        let key = Key::new(payload.prefix_len, payload.network);
+        let key = Key::new(payload.prefix_len, payload.network.to_be());
         if map.remove(&key).is_err() {
             return (
                 StatusCode::INTERNAL_SERVER_ERROR,
@@ -1049,9 +1090,49 @@ pub async fn remove_subnet_matching_v4(
             )
                 .into_response();
         }
+        if let Err(error) = state
+            .db
+            .delete_subnet_v4(payload.network, payload.prefix_len)
+            .await
+        {
+            tracing::error!("failed to delete IPv4 subnet rule: {error}");
+            return StatusCode::INTERNAL_SERVER_ERROR.into_response();
+        }
         StatusCode::OK.into_response()
     } else {
         StatusCode::UNAUTHORIZED.into_response()
+    }
+}
+
+#[utoipa::path(
+    get,
+    path = "/api/v1/config/subnet/v6",
+    responses((status = 200, description = "List IPv6 subnet rules", body = [SubnetMatchV6Update])),
+    security(("cookie_auth" = []))
+)]
+pub async fn list_subnet_matching_v6(
+    State(state): State<FirewallState>,
+    auth_session: AuthSession<Database>,
+) -> impl IntoResponse {
+    if auth_session.user.is_none() {
+        return StatusCode::UNAUTHORIZED.into_response();
+    }
+    match state.db.list_subnet_v6().await {
+        Ok(entries) => Json(
+            entries
+                .into_iter()
+                .map(|(network, prefix_len, action)| SubnetMatchV6Update {
+                    network,
+                    prefix_len,
+                    action,
+                })
+                .collect::<Vec<_>>(),
+        )
+        .into_response(),
+        Err(error) => {
+            tracing::error!("failed to list IPv6 subnet rules: {error}");
+            StatusCode::INTERNAL_SERVER_ERROR.into_response()
+        }
     }
 }
 
@@ -1094,6 +1175,15 @@ pub async fn modify_subnet_matching_v6(
                 "Failed to insert into SUBNET_MATCHING_V6",
             )
                 .into_response();
+        }
+        if let Err(error) = state
+            .db
+            .save_subnet_v6(payload.network, payload.prefix_len, payload.action)
+            .await
+        {
+            tracing::error!("failed to persist IPv6 subnet rule: {error}");
+            let _ = map.remove(&key);
+            return StatusCode::INTERNAL_SERVER_ERROR.into_response();
         }
         StatusCode::OK.into_response()
     } else {
@@ -1141,6 +1231,14 @@ pub async fn remove_subnet_matching_v6(
             )
                 .into_response();
         }
+        if let Err(error) = state
+            .db
+            .delete_subnet_v6(payload.network, payload.prefix_len)
+            .await
+        {
+            tracing::error!("failed to delete IPv6 subnet rule: {error}");
+            return StatusCode::INTERNAL_SERVER_ERROR.into_response();
+        }
         StatusCode::OK.into_response()
     } else {
         StatusCode::UNAUTHORIZED.into_response()
@@ -1182,11 +1280,15 @@ pub fn config_router() -> Router<FirewallState> {
         // Subnets (Notice: No GET or bulk DELETE)
         .route(
             "/subnet/v4",
-            post(modify_subnet_matching_v4).delete(remove_subnet_matching_v4),
+            get(list_subnet_matching_v4)
+                .post(modify_subnet_matching_v4)
+                .delete(remove_subnet_matching_v4),
         )
         .route(
             "/subnet/v6",
-            post(modify_subnet_matching_v6).delete(remove_subnet_matching_v6),
+            get(list_subnet_matching_v6)
+                .post(modify_subnet_matching_v6)
+                .delete(remove_subnet_matching_v6),
         )
 }
 
