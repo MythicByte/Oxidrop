@@ -1168,10 +1168,7 @@ pub async fn modify_subnet_matching_v6(
 
         let mut map = state.subnet_matching_v6.write().await;
 
-        let key = Key::new(
-            payload.prefix_len,
-            payload.network.map(u32::to_be),
-        );
+        let key = Key::new(payload.prefix_len, payload.network.map(u32::to_be));
         if map.insert(&key, payload.action, 0).is_err() {
             return (
                 StatusCode::INTERNAL_SERVER_ERROR,
@@ -1226,10 +1223,7 @@ pub async fn remove_subnet_matching_v6(
 
         let mut map = state.subnet_matching_v6.write().await;
 
-        let key = Key::new(
-            payload.prefix_len,
-            payload.network.map(u32::to_be),
-        );
+        let key = Key::new(payload.prefix_len, payload.network.map(u32::to_be));
         if map.remove(&key).is_err() {
             return (
                 StatusCode::INTERNAL_SERVER_ERROR,
@@ -1667,7 +1661,7 @@ mod tests {
         .await;
         assert_eq!(status, StatusCode::OK);
 
-        let key = aya::maps::lpm_trie::Key::new(24, 16843264);
+        let key = aya::maps::lpm_trie::Key::new(24, 16843264_u32.to_be());
         {
             let subnet_map = state.subnet_matching_v4.read().await;
             let action = subnet_map.get(&key, 0).unwrap();
@@ -1789,7 +1783,7 @@ mod tests {
         assert_ne!(status, StatusCode::OK); // Expect invalid prefix_len (33) to be rejected
 
         let subnet_map = state.subnet_matching_v4.read().await;
-        let key = aya::maps::lpm_trie::Key::new(33, 16843264);
+        let key = aya::maps::lpm_trie::Key::new(33, 16843264_u32.to_be());
         assert!(subnet_map.get(&key, 0).is_err());
     }
 
@@ -1909,7 +1903,7 @@ mod tests {
         .await;
         assert_eq!(status, StatusCode::OK);
 
-        let key = aya::maps::lpm_trie::Key::new(96, [16843264, 0, 0, 0]);
+        let key = aya::maps::lpm_trie::Key::new(96, [16843264_u32.to_be(), 0, 0, 0]);
         {
             let subnet_map = state.subnet_matching_v6.read().await;
             let action = subnet_map.get(&key, 0).unwrap();
