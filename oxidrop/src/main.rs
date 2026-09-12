@@ -5,8 +5,8 @@ use std::{
 };
 
 use anyhow::Context;
-use aya::maps::lpm_trie::Key;
 use axum_login::AuthManagerLayerBuilder;
+use aya::maps::lpm_trie::Key;
 use clap::Parser;
 use hyper::StatusCode;
 use oxidrop::{
