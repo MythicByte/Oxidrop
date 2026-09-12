@@ -215,7 +215,12 @@ fn xdp_firewall(ctx: XdpContext) -> Result<u32, FirewallError> {
                     flow_key
                 }
             };
-            let subnet_key_v4 = Key::new(32, flow_key_direction.source_addr);
+            let external_addr_v4 = match direction {
+                TraficDirection::Incoming => source_addr,
+                TraficDirection::Outgoing => dest_addr,
+            };
+
+            let subnet_key_v4 = Key::new(32, u32::from_ne_bytes(external_addr_v4.octets()));
             match (
                 SUBNET_MATCHING_V4.get(&subnet_key_v4),
                 config.subnet_activated,
@@ -272,10 +277,9 @@ fn xdp_firewall(ctx: XdpContext) -> Result<u32, FirewallError> {
                     }
                 };
                 if let Some(ethernet_rederect) = target_ifindex {
-                    unsafe {
-                        aya_ebpf::helpers::bpf_redirect(ethernet_rederect as u32, 0);
-                    }
-                    return Ok(xdp_action::XDP_REDIRECT);
+                    return Ok(unsafe {
+                        aya_ebpf::helpers::bpf_redirect(ethernet_rederect as u32, 0) as u32
+                    });
                 } else {
                     return Ok(xdp_action::XDP_PASS);
                 }
@@ -469,11 +473,34 @@ fn xdp_firewall(ctx: XdpContext) -> Result<u32, FirewallError> {
                     flow_key
                 }
             };
-            let subnet_key = match direction {
-                TraficDirection::Incoming => dst_array,
-                TraficDirection::Outgoing => src_array,
+            let external_octets_v6 = match direction {
+                TraficDirection::Incoming => src_octets,
+                TraficDirection::Outgoing => dst_octets,
             };
-            let subnet_key_v6 = Key::new(128, subnet_key);
+
+            let subnet_external_array = [
+                u32::from_ne_bytes(
+                    external_octets_v6[0..4]
+                        .try_into()
+                        .map_err(|_| FirewallError::OutOfBounds)?,
+                ),
+                u32::from_ne_bytes(
+                    external_octets_v6[4..8]
+                        .try_into()
+                        .map_err(|_| FirewallError::OutOfBounds)?,
+                ),
+                u32::from_ne_bytes(
+                    external_octets_v6[8..12]
+                        .try_into()
+                        .map_err(|_| FirewallError::OutOfBounds)?,
+                ),
+                u32::from_ne_bytes(
+                    external_octets_v6[12..16]
+                        .try_into()
+                        .map_err(|_| FirewallError::OutOfBounds)?,
+                ),
+            ];
+            let subnet_key_v6 = Key::new(128, subnet_external_array);
             match (
                 SUBNET_MATCHING_V6.get(&subnet_key_v6),
                 config.subnet_activated,
@@ -528,10 +555,9 @@ fn xdp_firewall(ctx: XdpContext) -> Result<u32, FirewallError> {
                     }
                 };
                 if let Some(ethernet_rederect) = target_ifindex {
-                    unsafe {
-                        aya_ebpf::helpers::bpf_redirect(ethernet_rederect as u32, 0);
-                    }
-                    return Ok(xdp_action::XDP_REDIRECT);
+                    return Ok(unsafe {
+                        aya_ebpf::helpers::bpf_redirect(ethernet_rederect as u32, 0) as u32
+                    });
                 } else {
                     return Ok(xdp_action::XDP_PASS);
                 }
@@ -614,10 +640,7 @@ fn ddos_and_bucket_ending_v4(
                 TraficDirection::Outgoing => config.incoming_ethernet_adapter.map(|x| x as u32),
             };
             if let Some(ethernet_rederect) = target_ifindex {
-                unsafe {
-                    aya_ebpf::helpers::bpf_redirect(ethernet_rederect as u32, 0);
-                }
-                Ok(xdp_action::XDP_REDIRECT)
+                Ok(unsafe { aya_ebpf::helpers::bpf_redirect(ethernet_rederect as u32, 0) as u32 })
             } else {
                 Ok(xdp_action::XDP_PASS)
             }
@@ -631,10 +654,7 @@ fn ddos_and_bucket_ending_v4(
             TraficDirection::Outgoing => config.incoming_ethernet_adapter.map(|x| x as u32),
         };
         if let Some(ethernet_rederect) = target_ifindex {
-            unsafe {
-                aya_ebpf::helpers::bpf_redirect(ethernet_rederect as u32, 0);
-            }
-            Ok(xdp_action::XDP_REDIRECT)
+            Ok(unsafe { aya_ebpf::helpers::bpf_redirect(ethernet_rederect as u32, 0) as u32 })
         } else {
             Ok(xdp_action::XDP_PASS)
         }
@@ -657,10 +677,7 @@ fn ddos_and_bucket_ending_v6(
                 TraficDirection::Outgoing => config.incoming_ethernet_adapter.map(|x| x as u32),
             };
             if let Some(ethernet_rederect) = target_ifindex {
-                unsafe {
-                    aya_ebpf::helpers::bpf_redirect(ethernet_rederect as u32, 0);
-                }
-                Ok(xdp_action::XDP_REDIRECT)
+                Ok(unsafe { aya_ebpf::helpers::bpf_redirect(ethernet_rederect as u32, 0) as u32 })
             } else {
                 Ok(xdp_action::XDP_PASS)
             }
@@ -674,10 +691,7 @@ fn ddos_and_bucket_ending_v6(
             TraficDirection::Outgoing => config.incoming_ethernet_adapter.map(|x| x as u32),
         };
         if let Some(ethernet_rederect) = target_ifindex {
-            unsafe {
-                aya_ebpf::helpers::bpf_redirect(ethernet_rederect as u32, 0);
-            }
-            Ok(xdp_action::XDP_REDIRECT)
+            Ok(unsafe { aya_ebpf::helpers::bpf_redirect(ethernet_rederect as u32, 0) as u32 })
         } else {
             Ok(xdp_action::XDP_PASS)
         }
