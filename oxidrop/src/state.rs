@@ -1419,11 +1419,20 @@ pub async fn restart_ebpf(
 
 #[cfg(test)]
 mod tests {
+    use std::{
+        process::Command,
+        sync::atomic::{
+            AtomicUsize,
+            Ordering,
+        },
+    };
+
     use axum::{
         body::Body,
         extract::Request,
     };
     use axum_login::AuthManagerLayerBuilder;
+    use etherparse::PacketBuilder;
     use hyper::Method;
     use tower::ServiceExt;
     use tower_sessions::{
@@ -1615,6 +1624,651 @@ mod tests {
             .unwrap();
 
         (status, String::from_utf8_lossy(&body_bytes).to_string())
+    }
+
+    struct DummyInterfaces {
+        names: [String; 2],
+        indexes: [u32; 2],
+    }
+
+    impl DummyInterfaces {
+        fn create() -> Self {
+            let pid = std::process::id();
+            static NEXT_ID: AtomicUsize = AtomicUsize::new(0);
+            let id = NEXT_ID.fetch_add(1, Ordering::Relaxed);
+            let names = [format!("odx{pid}{id}i"), format!("odx{pid}{id}o")];
+            for name in &names {
+                let output = Command::new("ip")
+                    .args(["link", "add", name, "type", "dummy"])
+                    .output()
+                    .unwrap_or_else(|error| {
+                        panic!("failed to execute ip while creating {name}: {error}")
+                    });
+                assert!(
+                    output.status.success(),
+                    "failed to create dummy interface {name}: {}",
+                    String::from_utf8_lossy(&output.stderr)
+                );
+                let output = Command::new("ip")
+                    .args(["link", "set", "dev", name, "up"])
+                    .output()
+                    .unwrap_or_else(|error| {
+                        panic!("failed to bring dummy interface {name} up: {error}")
+                    });
+                assert!(
+                    output.status.success(),
+                    "failed to activate dummy interface {name}: {}",
+                    String::from_utf8_lossy(&output.stderr)
+                );
+            }
+
+            let indexes = names.clone().map(|name| {
+                let output = Command::new("ip")
+                    .args(["-o", "link", "show", "dev", &name])
+                    .output()
+                    .unwrap_or_else(|error| {
+                        panic!("failed to query interface index for {name}: {error}")
+                    });
+                assert!(
+                    output.status.success(),
+                    "failed to query interface index for {name}: {}",
+                    String::from_utf8_lossy(&output.stderr)
+                );
+                String::from_utf8_lossy(&output.stdout)
+                    .split_once(':')
+                    .and_then(|(index, _)| index.trim().parse().ok())
+                    .unwrap_or_else(|| panic!("ip returned no index for dummy interface {name}"))
+            });
+
+            Self { names, indexes }
+        }
+    }
+
+    impl Drop for DummyInterfaces {
+        fn drop(&mut self) {
+            for name in &self.names {
+                let output = Command::new("ip")
+                    .args(["link", "del", name])
+                    .output()
+                    .unwrap_or_else(|error| {
+                        panic!("failed to execute ip while removing {name}: {error}")
+                    });
+                assert!(
+                    output.status.success(),
+                    "failed to remove dummy interface {name}: {}",
+                    String::from_utf8_lossy(&output.stderr)
+                );
+            }
+        }
+    }
+
+    fn build_ipv4_udp() -> Vec<u8> {
+        let builder = PacketBuilder::ethernet2([1; 6], [2; 6])
+            .ipv4([192, 168, 10, 10], [10, 0, 0, 10], 64)
+            .udp(12_345, 80);
+        let mut packet = Vec::new();
+        builder
+            .write(&mut packet, &[0; 32])
+            .expect("UDP packet serialization must succeed");
+        packet
+    }
+
+    fn build_ipv4_tcp() -> Vec<u8> {
+        let builder = PacketBuilder::ethernet2([1; 6], [2; 6])
+            .ipv4([192, 168, 10, 10], [10, 0, 0, 10], 64)
+            .tcp(12_345, 80, 1, 10);
+        let mut packet = Vec::new();
+        builder
+            .write(&mut packet, &[])
+            .expect("TCP packet serialization must succeed");
+        packet
+    }
+
+    fn build_ipv4_icmp() -> Vec<u8> {
+        let mut packet = build_ipv4_udp();
+        *packet
+            .get_mut(23)
+            .expect("serialized IPv4 packet must contain the protocol byte") = 1;
+        packet
+            .get_mut(24..26)
+            .expect("IPv4 header checksum field must exist")
+            .fill(0);
+        let checksum = ipv4_header_checksum(&packet);
+        packet
+            .get_mut(24..26)
+            .expect("IPv4 header checksum field must exist")
+            .copy_from_slice(&checksum.to_be_bytes());
+        packet
+    }
+
+    fn build_ipv4_unsupported() -> Vec<u8> {
+        let mut packet = build_ipv4_udp();
+        *packet
+            .get_mut(23)
+            .expect("serialized IPv4 packet must contain the protocol byte") = 47;
+        packet
+            .get_mut(24..26)
+            .expect("IPv4 header checksum field must exist")
+            .fill(0);
+        let checksum = ipv4_header_checksum(&packet);
+        packet
+            .get_mut(24..26)
+            .expect("IPv4 header checksum field must exist")
+            .copy_from_slice(&checksum.to_be_bytes());
+        packet
+    }
+
+    fn ipv4_header_checksum(packet: &[u8]) -> u16 {
+        let header = packet
+            .get(14..34)
+            .expect("serialized Ethernet+IPv4 packet must contain a 20-byte IPv4 header");
+        let sum = header
+            .as_chunks::<2>()
+            .0
+            .iter()
+            .map(|word| u32::from(u16::from_be_bytes(*word)))
+            .sum::<u32>();
+        !(sum as u16).wrapping_add((sum >> 16) as u16)
+    }
+
+    #[tokio::test]
+    async fn test_axum_backend_with_real_ebpf_and_two_interfaces() {
+        const XDP_DROP: u32 = 1;
+        const XDP_REDIRECT: u32 = 4;
+
+        let interfaces = DummyInterfaces::create();
+        assert_ne!(
+            interfaces.indexes[0], interfaces.indexes[1],
+            "inside and outside dummy interfaces must have distinct ifindexes"
+        );
+
+        let mut ebpf = EbpfProgramm::new().expect("real eBPF object must load");
+        let (
+            mut config_map,
+            allow_list_v4,
+            allow_list_v6,
+            packet_counts_v4,
+            packet_counts_v6,
+            subnet_matching_v4,
+            subnet_matching_v6,
+        ) = ebpf
+            .get_maps()
+            .expect("all production eBPF maps must be available");
+        config_map
+            .set(0, FirewallConfig::default(), 0)
+            .expect("default firewall config must be writable");
+
+        let db = Database::new("sqlite::memory:")
+            .await
+            .expect("in-memory integration database must initialize");
+        db.bootstrap_default_admin()
+            .await
+            .expect("default admin must be available for authenticated API requests");
+        let state = FirewallState {
+            db: db.clone(),
+            config: Arc::new(RwLock::new(config_map)),
+            allow_list_v4: Arc::new(RwLock::new(allow_list_v4)),
+            allow_list_v6: Arc::new(RwLock::new(allow_list_v6)),
+            packet_counts_v4: Arc::new(RwLock::new(packet_counts_v4)),
+            packet_counts_v6: Arc::new(RwLock::new(packet_counts_v6)),
+            subnet_matching_v4: Arc::new(RwLock::new(subnet_matching_v4)),
+            subnet_matching_v6: Arc::new(RwLock::new(subnet_matching_v6)),
+            logs: Arc::new(LogStore::new(db.clone())),
+            ebpf: Some(Arc::new(Mutex::new(ebpf))),
+            opt: Opt {
+                http_port: 0,
+                incoming_adapter: Some(interfaces.indexes[0]),
+                output_adapter: Some(interfaces.indexes[1]),
+            },
+        };
+
+        let patch = serde_json::json!({
+            "incoming_ethernet_adapter": interfaces.indexes[0],
+            "output_ethernet_adapter": interfaces.indexes[1],
+            "protocol_allowed": ActivaterEtherTypes::IPV4.bits(),
+            "subnet_activated": true,
+            "ddos_activated": true,
+            "udp_profile": {"rate_shift": 63, "burst": 1},
+            "tcp_profile": {"rate_shift": 63, "burst": 4},
+            "icmp_profile": {"rate_shift": 63, "burst": 4}
+        });
+        let (status, body) = make_request(
+            state.clone(),
+            Method::POST,
+            "/",
+            Some(patch.to_string()),
+            None,
+        )
+        .await;
+        assert_eq!(
+            status,
+            StatusCode::OK,
+            "backend config request must configure both interfaces; body={body}"
+        );
+
+        for (network, protocol, source_port, destination_port) in [
+            (u32::from_be_bytes([192, 168, 10, 0]), 1_u8, 0_u16, 0_u16),
+            (u32::from_be_bytes([192, 168, 10, 0]), 6_u8, 12_345, 80),
+            (u32::from_be_bytes([192, 168, 10, 0]), 17_u8, 12_345, 80),
+        ] {
+            let rule = serde_json::json!({
+                "network": network,
+                "prefix_len": 24,
+                "action": "Allow"
+            });
+            let (status, body) = make_request(
+                state.clone(),
+                Method::POST,
+                "/subnet/v4",
+                Some(rule.to_string()),
+                None,
+            )
+            .await;
+            assert_eq!(
+                status,
+                StatusCode::OK,
+                "subnet rule for protocol {protocol} must be accepted; body={body}"
+            );
+            let entry = serde_json::json!({
+                "key": {
+                    "source_addr": u32::from_be_bytes([10, 0, 0, 10]),
+                    "destination_addr": u32::from_be_bytes([192, 168, 10, 10]),
+                    "source_port": destination_port,
+                    "destination_port": source_port,
+                    "protocol": protocol
+                },
+                "state": {"action": "Allow", "last_seen": 0}
+            });
+            let (status, body) = make_request(
+                state.clone(),
+                Method::POST,
+                "/allow_list/v4",
+                Some(entry.to_string()),
+                None,
+            )
+            .await;
+            assert_eq!(
+                status,
+                StatusCode::OK,
+                "allow-list entry for protocol {protocol} must be accepted; body={body}"
+            );
+        }
+
+        let (status, body) = make_request(state.clone(), Method::GET, "/", None, None).await;
+        assert_eq!(
+            status,
+            StatusCode::OK,
+            "backend config must remain readable; body={body}"
+        );
+        let config: FirewallConfig =
+            serde_json::from_str(&body).expect("backend config response must be valid JSON");
+        assert_eq!(
+            config.incoming_ethernet_adapter,
+            Some(interfaces.indexes[0]),
+            "inside interface must be persisted in backend config"
+        );
+        assert_eq!(
+            config.output_ethernet_adapter,
+            Some(interfaces.indexes[1]),
+            "outside interface must be persisted in backend config"
+        );
+
+        let mut ebpf = state.ebpf.as_ref().unwrap().lock().await;
+        for (name, packet, expected) in [
+            ("ICMP", build_ipv4_icmp(), XDP_REDIRECT),
+            ("TCP", build_ipv4_tcp(), XDP_REDIRECT),
+            ("UDP", build_ipv4_udp(), XDP_REDIRECT),
+        ] {
+            let result = ebpf
+                .test_run_packet(&packet, interfaces.indexes[0])
+                .unwrap_or_else(|error| panic!("{name} packet test-run must succeed: {error}"));
+            assert_eq!(
+                result, expected,
+                "{name} packet must return XDP_REDIRECT from inside to outside"
+            );
+        }
+
+        let second_udp = ebpf
+            .test_run_packet(&build_ipv4_udp(), interfaces.indexes[0])
+            .expect("second UDP test-run must succeed");
+        assert_eq!(
+            second_udp, XDP_DROP,
+            "UDP DDoS burst of one must drop the second packet"
+        );
+
+        let unsupported = ebpf
+            .test_run_packet(&build_ipv4_unsupported(), interfaces.indexes[0])
+            .expect("unsupported protocol test-run must succeed");
+        assert_eq!(
+            unsupported, XDP_DROP,
+            "unsupported IPv4 protocol must be rejected by the configured firewall policy"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_axum_backend_real_ebpf_stress_configuration_and_policy_transitions() {
+        const XDP_DROP: u32 = 1;
+        const XDP_REDIRECT: u32 = 4;
+
+        let interfaces = DummyInterfaces::create();
+        let mut ebpf = EbpfProgramm::new().expect("stress test eBPF object must load");
+        let (
+            mut config_map,
+            allow_list_v4,
+            allow_list_v6,
+            packet_counts_v4,
+            packet_counts_v6,
+            subnet_matching_v4,
+            subnet_matching_v6,
+        ) = ebpf
+            .get_maps()
+            .expect("stress test must obtain every production eBPF map");
+        config_map
+            .set(0, FirewallConfig::default(), 0)
+            .expect("stress test CONFIG map must be writable");
+
+        let db = Database::new("sqlite::memory:")
+            .await
+            .expect("stress test database must initialize");
+        db.bootstrap_default_admin()
+            .await
+            .expect("stress test admin must be created");
+        let state = FirewallState {
+            db: db.clone(),
+            config: Arc::new(RwLock::new(config_map)),
+            allow_list_v4: Arc::new(RwLock::new(allow_list_v4)),
+            allow_list_v6: Arc::new(RwLock::new(allow_list_v6)),
+            packet_counts_v4: Arc::new(RwLock::new(packet_counts_v4)),
+            packet_counts_v6: Arc::new(RwLock::new(packet_counts_v6)),
+            subnet_matching_v4: Arc::new(RwLock::new(subnet_matching_v4)),
+            subnet_matching_v6: Arc::new(RwLock::new(subnet_matching_v6)),
+            logs: Arc::new(LogStore::new(db.clone())),
+            ebpf: Some(Arc::new(Mutex::new(ebpf))),
+            opt: Opt {
+                http_port: 0,
+                incoming_adapter: Some(interfaces.indexes[0]),
+                output_adapter: Some(interfaces.indexes[1]),
+            },
+        };
+
+        let configure = serde_json::json!({
+            "incoming_ethernet_adapter": interfaces.indexes[0],
+            "output_ethernet_adapter": interfaces.indexes[1],
+            "protocol_allowed": ActivaterEtherTypes::IPV4.bits(),
+            "subnet_activated": true,
+            "ddos_activated": true,
+            "udp_profile": {"rate_shift": 63, "burst": 2},
+            "tcp_profile": {"rate_shift": 63, "burst": 2},
+            "icmp_profile": {"rate_shift": 63, "burst": 2}
+        });
+        let (status, body) = make_request(
+            state.clone(),
+            Method::POST,
+            "/",
+            Some(configure.to_string()),
+            None,
+        )
+        .await;
+        assert_eq!(
+            status,
+            StatusCode::OK,
+            "stress configuration request must succeed; body={body}"
+        );
+
+        let (status, body) = make_request(
+            state.clone(),
+            Method::POST,
+            "/subnet/v4",
+            Some(
+                serde_json::json!({
+                    "network": u32::from_be_bytes([192, 168, 10, 0]),
+                    "prefix_len": 33,
+                    "action": "Allow"
+                })
+                .to_string(),
+            ),
+            None,
+        )
+        .await;
+        assert_eq!(
+            status,
+            StatusCode::BAD_REQUEST,
+            "invalid /33 subnet must be rejected without changing policy; body={body}"
+        );
+
+        let subnet = serde_json::json!({
+            "network": u32::from_be_bytes([192, 168, 10, 0]),
+            "prefix_len": 24,
+            "action": "Allow"
+        });
+        for attempt in 0..8 {
+            let (status, body) = make_request(
+                state.clone(),
+                Method::POST,
+                "/subnet/v4",
+                Some(subnet.to_string()),
+                None,
+            )
+            .await;
+            assert_eq!(
+                status,
+                StatusCode::OK,
+                "repeated subnet update {attempt} must remain idempotent; body={body}"
+            );
+        }
+
+        for protocol in [1_u8, 6, 17] {
+            let entry = serde_json::json!({
+                "key": {
+                    "source_addr": u32::from_be_bytes([10, 0, 0, 10]),
+                    "destination_addr": u32::from_be_bytes([192, 168, 10, 10]),
+                    "source_port": if protocol == 1 { 0 } else { 80 },
+                    "destination_port": if protocol == 1 { 0 } else { 12345 },
+                    "protocol": protocol
+                },
+                "state": {"action": "Allow", "last_seen": 0}
+            });
+            for attempt in 0..4 {
+                let (status, body) = make_request(
+                    state.clone(),
+                    Method::POST,
+                    "/allow_list/v4",
+                    Some(entry.to_string()),
+                    None,
+                )
+                .await;
+                assert_eq!(
+                    status,
+                    StatusCode::OK,
+                    "allow-list update {protocol} attempt {attempt} must succeed; body={body}"
+                );
+            }
+        }
+
+        let (status, body) =
+            make_request(state.clone(), Method::GET, "/allow_list/v4", None, None).await;
+        assert_eq!(
+            status,
+            StatusCode::OK,
+            "allow-list must remain readable after repeated updates; body={body}"
+        );
+        let entries: Vec<(Ipv4Packet, AllowListState)> =
+            serde_json::from_str(&body).expect("allow-list response must remain valid JSON");
+        assert_eq!(
+            entries.len(),
+            3,
+            "repeated writes must not duplicate the three protocol flow keys"
+        );
+
+        {
+            let mut ebpf = state.ebpf.as_ref().unwrap().lock().await;
+            for (name, packet) in [
+                ("ICMP", build_ipv4_icmp()),
+                ("TCP", build_ipv4_tcp()),
+                ("UDP", build_ipv4_udp()),
+            ] {
+                let result = ebpf
+                    .test_run_packet(&packet, interfaces.indexes[0])
+                    .unwrap_or_else(|error| panic!("{name} stress packet must execute: {error}"));
+                assert_eq!(
+                    result, XDP_REDIRECT,
+                    "{name} must redirect while subnet and flow policy are present"
+                );
+            }
+        }
+
+        let (status, body) =
+            make_request(state.clone(), Method::DELETE, "/allow_list/v4", None, None).await;
+        assert_eq!(
+            status,
+            StatusCode::OK,
+            "clearing the IPv4 allow-list must succeed; body={body}"
+        );
+        let mut ebpf = state.ebpf.as_ref().unwrap().lock().await;
+        let denied_without_state = ebpf
+            .test_run_packet(&build_ipv4_tcp(), interfaces.indexes[0])
+            .expect("TCP must execute after allow-list clearing");
+        assert_eq!(
+            denied_without_state, XDP_DROP,
+            "TCP must be denied immediately after its allow-list state is cleared"
+        );
+        drop(ebpf);
+
+        let tcp_entry = serde_json::json!({
+            "key": {
+                "source_addr": u32::from_be_bytes([10, 0, 0, 10]),
+                "destination_addr": u32::from_be_bytes([192, 168, 10, 10]),
+                "source_port": 80,
+                "destination_port": 12345,
+                "protocol": 6
+            },
+            "state": {"action": "Allow", "last_seen": 0}
+        });
+        let (status, body) = make_request(
+            state.clone(),
+            Method::POST,
+            "/allow_list/v4",
+            Some(tcp_entry.to_string()),
+            None,
+        )
+        .await;
+        assert_eq!(
+            status,
+            StatusCode::OK,
+            "TCP state must be restorable after clearing; body={body}"
+        );
+
+        let (status, body) = make_request(
+            state.clone(),
+            Method::DELETE,
+            "/subnet/v4",
+            Some(subnet.to_string()),
+            None,
+        )
+        .await;
+        assert_eq!(
+            status,
+            StatusCode::OK,
+            "deleting the subnet rule must succeed; body={body}"
+        );
+        let mut ebpf = state.ebpf.as_ref().unwrap().lock().await;
+        let denied_without_subnet = ebpf
+            .test_run_packet(&build_ipv4_tcp(), interfaces.indexes[0])
+            .expect("TCP must execute after subnet deletion");
+        assert_eq!(
+            denied_without_subnet, XDP_DROP,
+            "TCP must be denied when subnet matching has no matching rule"
+        );
+        drop(ebpf);
+
+        let (status, body) = make_request(
+            state.clone(),
+            Method::POST,
+            "/subnet/v4",
+            Some(subnet.to_string()),
+            None,
+        )
+        .await;
+        assert_eq!(
+            status,
+            StatusCode::OK,
+            "subnet policy must be restorable after deletion; body={body}"
+        );
+
+        let (status, body) = make_request(
+            state.clone(),
+            Method::POST,
+            "/",
+            Some(serde_json::json!({"ddos_activated": false}).to_string()),
+            None,
+        )
+        .await;
+        assert_eq!(
+            status,
+            StatusCode::OK,
+            "DDoS protection must be disableable for transition testing; body={body}"
+        );
+        let mut ebpf = state.ebpf.as_ref().unwrap().lock().await;
+        for attempt in 0..6 {
+            let result = ebpf
+                .test_run_packet(&build_ipv4_tcp(), interfaces.indexes[0])
+                .unwrap_or_else(|error| {
+                    panic!("TCP burst attempt {attempt} must execute: {error}")
+                });
+            assert_eq!(
+                result, XDP_REDIRECT,
+                "TCP attempt {attempt} must redirect while DDoS protection is disabled"
+            );
+        }
+        drop(ebpf);
+
+        let (status, body) = make_request(
+            state.clone(),
+            Method::POST,
+            "/",
+            Some(
+                serde_json::json!({
+                    "ddos_activated": true,
+                    "tcp_profile": {"rate_shift": 63, "burst": 1}
+                })
+                .to_string(),
+            ),
+            None,
+        )
+        .await;
+        assert_eq!(
+            status,
+            StatusCode::OK,
+            "DDoS protection must be re-enableable; body={body}"
+        );
+        let (status, body) = make_request(
+            state.clone(),
+            Method::DELETE,
+            "/packet_counts/v4",
+            None,
+            None,
+        )
+        .await;
+        assert_eq!(
+            status,
+            StatusCode::OK,
+            "clearing packet counters must reset the stress bucket; body={body}"
+        );
+        let mut ebpf = state.ebpf.as_ref().unwrap().lock().await;
+        let first = ebpf
+            .test_run_packet(&build_ipv4_tcp(), interfaces.indexes[0])
+            .expect("first rate-limited TCP packet must execute");
+        let second = ebpf
+            .test_run_packet(&build_ipv4_tcp(), interfaces.indexes[0])
+            .expect("second rate-limited TCP packet must execute");
+        assert_eq!(
+            first, XDP_REDIRECT,
+            "first TCP packet must consume the one-packet burst and redirect"
+        );
+        assert_eq!(
+            second, XDP_DROP,
+            "second TCP packet must be dropped after the burst is exhausted"
+        );
     }
 
     #[tokio::test]

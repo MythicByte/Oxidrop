@@ -248,6 +248,30 @@ impl EbpfProgramm {
             subnet_matching_v6,
         ))
     }
+
+    #[cfg(test)]
+    pub(crate) fn test_run_packet(
+        &mut self,
+        packet: &[u8],
+        ingress_ifindex: u32,
+    ) -> anyhow::Result<u32> {
+        use aya::{
+            TestRun,
+            programs::TestRunOptions,
+        };
+
+        let context = [0_u32, packet.len() as u32, 0, ingress_ifindex, 0, 0];
+        let context_bytes = context
+            .into_iter()
+            .flat_map(u32::to_ne_bytes)
+            .collect::<Vec<_>>();
+        let result = self.xdp()?.test_run(TestRunOptions {
+            data_in: Some(packet),
+            ctx_in: Some(&context_bytes),
+            ..Default::default()
+        })?;
+        Ok(result.return_value)
+    }
 }
 fn resolve_iface(index: u32) -> AdapterInfo {
     // Open a dummy socket (required by the kernel to process the SIOCGIFNAME ioctl)
