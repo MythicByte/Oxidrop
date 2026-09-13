@@ -24,6 +24,7 @@ import {
   RotateCw,
   ShieldAlert,
   Trash2,
+  X,
 } from "lucide-react";
 import { client } from "./api.tsx";
 import type { components } from "../api/schema.d.ts";
@@ -477,12 +478,12 @@ export function FirewallConfiguration() {
         {attachmentNotice && (
           <div
             role="alert"
-            className={`mb-5 flex items-center gap-3 border px-4 py-3 text-sm font-medium transition-opacity duration-500 ease-out ${
+            className={`relative mb-5 flex items-center gap-3 border px-4 py-3 pr-10 text-sm font-medium transition-opacity duration-500 ease-out ${
               noticeFading ? "opacity-0" : "opacity-100"
             } ${
               attachmentNotice.kind === "success"
                 ? "animate-pulse border-emerald-500/40 bg-emerald-500/10 text-emerald-700"
-                : "border-destructive/40 bg-destructive/10 text-destructive"
+                : "animate-in slide-in-from-right-2 border-destructive/40 bg-destructive/10 text-destructive"
             }`}
           >
             <span
@@ -493,6 +494,14 @@ export function FirewallConfiguration() {
               }`}
             />
             {attachmentNotice.message}
+            <button
+              type="button"
+              aria-label="Dismiss notification"
+              onClick={() => setAttachmentNotice(null)}
+              className="absolute right-2 top-2 rounded-md p-1 opacity-70 transition-opacity hover:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-current"
+            >
+              <X className="size-4" />
+            </button>
           </div>
         )}
         <h2 className="text-3xl font-bold tracking-tight">
