@@ -1,26 +1,26 @@
 // not_std active normal disable with feature
-#![cfg_attr(not(feature = "user"), no_std)]
+#![cfg_attr(not(feature = "std"), no_std)]
 
-#[cfg(feature = "user")]
+#[cfg(feature = "std")]
 use aya::Pod;
 use network_types::eth::EtherType;
-#[cfg(feature = "user")]
+#[cfg(feature = "std")]
 use serde::Deserialize;
-#[cfg(feature = "user")]
+#[cfg(feature = "std")]
 use serde::Serialize;
-#[cfg(feature = "user")]
+#[cfg(feature = "std")]
 use utoipa::ToSchema;
 /// What to do with a list
 #[repr(C)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
-#[cfg_attr(feature = "user", derive(Serialize, Deserialize, ToSchema))]
+#[cfg_attr(feature = "std", derive(Serialize, Deserialize, ToSchema))]
 pub enum Action {
     Allow = 0,
     Deny = 1,
 }
 #[repr(C)]
 #[derive(Clone, Copy, Debug)]
-#[cfg_attr(feature = "user", derive(Serialize, Deserialize, ToSchema))]
+#[cfg_attr(feature = "std", derive(Serialize, Deserialize, ToSchema))]
 pub struct AllowListState {
     pub action: Action,
     pub last_seen: u64,
@@ -29,7 +29,7 @@ pub struct AllowListState {
 /// which directions of ethenet adapter i need to check
 #[repr(C)]
 #[derive(Clone, Copy, Debug)]
-#[cfg_attr(feature = "user", derive(Serialize, Deserialize, ToSchema))]
+#[cfg_attr(feature = "std", derive(Serialize, Deserialize, ToSchema))]
 pub enum TraficDirection {
     Incoming = 0,
     Outgoing = 1,
@@ -37,7 +37,7 @@ pub enum TraficDirection {
 /// The ddos protection bucket
 #[repr(C)]
 #[derive(Clone, Copy, Debug)]
-#[cfg_attr(feature = "user", derive(Serialize, Deserialize, ToSchema))]
+#[cfg_attr(feature = "std", derive(Serialize, Deserialize, ToSchema))]
 pub struct TokenBucketState {
     pub tokens: u64,
     pub last_update: u64,
@@ -45,7 +45,7 @@ pub struct TokenBucketState {
 /// Erros for the firewall
 #[repr(C)]
 #[derive(Clone, Copy, Debug)]
-#[cfg_attr(feature = "user", derive(Serialize, Deserialize, ToSchema))]
+#[cfg_attr(feature = "std", derive(Serialize, Deserialize, ToSchema))]
 pub enum FirewallError {
     /// The packet is too short, and reading the header would go out of bounds.
     OutOfBounds = 0,
@@ -60,7 +60,7 @@ pub enum FirewallError {
 }
 bitflags::bitflags! {
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-    #[cfg_attr(feature = "user", derive(Serialize, Deserialize))]
+    #[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
     pub struct ActivaterEtherTypes: u16 {
         const LOOP       = 1 << 0;
         const IPV4       = 1 << 1;
@@ -73,7 +73,7 @@ bitflags::bitflags! {
 /// Bucket State for Rate Limiting
 #[repr(C)]
 #[derive(Clone, Copy, Debug)]
-#[cfg_attr(feature = "user", derive(Serialize, Deserialize, ToSchema))]
+#[cfg_attr(feature = "std", derive(Serialize, Deserialize, ToSchema))]
 pub struct RateProfile {
     pub rate_shift: u64,
     pub burst: u64,
@@ -81,13 +81,13 @@ pub struct RateProfile {
 // Configuration provided by Userspace
 #[repr(C)]
 #[derive(Clone, Copy, Debug)]
-#[cfg_attr(feature = "user", derive(Serialize, Deserialize, ToSchema))]
+#[cfg_attr(feature = "std", derive(Serialize, Deserialize, ToSchema))]
 pub struct FirewallConfig {
     pub tcp_profile: RateProfile,
     pub udp_profile: RateProfile,
     pub icmp_profile: RateProfile,
     pub default_profile: RateProfile,
-    #[cfg_attr(feature = "user", schema(value_type = u8))]
+    #[cfg_attr(feature = "std", schema(value_type = u8))]
     pub protocol_allowed: ActivaterEtherTypes,
     /// if ddos protection is on
     pub ddos_activated: bool,
@@ -103,16 +103,16 @@ pub struct FirewallConfig {
 /// Total size: 16 bytes (Strictly aligned)
 #[repr(C)]
 #[derive(Clone, Copy, Debug)]
-#[cfg_attr(feature = "user", derive(Serialize, Deserialize, ToSchema))]
+#[cfg_attr(feature = "std", derive(Serialize, Deserialize, ToSchema))]
 pub struct Ipv4Packet {
     pub source_addr: u32,      // 4 bytes (Source IP)
     pub destination_addr: u32, // 4 bytes (Destination IP)
     pub source_port: u16,      // 2 bytes (Source Port)
     pub destination_port: u16, // 2 bytes (Destination Port)
     pub protocol: u8,          // 1 byte  (Protocol - TCP/UDP)
-    #[cfg_attr(feature = "user", serde(default))]
+    #[cfg_attr(feature = "std", serde(default))]
     pub _pad: u8, // 1 byte  - ZERO THIS OUT
-    #[cfg_attr(feature = "user", serde(default))]
+    #[cfg_attr(feature = "std", serde(default))]
     pub _pad2: u16, // 2 bytes - ZERO THIS OUT (Ensures 4-byte alignment)
 }
 
@@ -142,14 +142,14 @@ impl Ipv4Packet {
 /// Total size: 40 bytes (Strictly aligned)
 #[repr(C)]
 #[derive(Clone, Copy, Debug)]
-#[cfg_attr(feature = "user", derive(Serialize, Deserialize, ToSchema))]
+#[cfg_attr(feature = "std", derive(Serialize, Deserialize, ToSchema))]
 pub struct Ipv6Packet {
     pub source_addr: [u32; 4],      // 16 bytes
     pub destination_addr: [u32; 4], // 16 bytes
     pub source_port: u16,           // 2 bytes
     pub destination_port: u16,      // 2 bytes
     pub protocol: u8,               // 1 byte
-    #[cfg_attr(feature = "user", serde(default))]
+    #[cfg_attr(feature = "std", serde(default))]
     pub _pad: [u8; 3], // 3 bytes - ZERO THIS OUT (Ensures 4-byte alignment)
 }
 
@@ -207,21 +207,21 @@ impl Default for FirewallConfig {
         }
     }
 }
-#[cfg(feature = "user")]
+#[cfg(feature = "std")]
 unsafe impl Pod for Action {}
-#[cfg(feature = "user")]
+#[cfg(feature = "std")]
 unsafe impl Pod for FirewallError {}
-#[cfg(feature = "user")]
+#[cfg(feature = "std")]
 unsafe impl Pod for FirewallConfig {}
-#[cfg(feature = "user")]
+#[cfg(feature = "std")]
 unsafe impl Pod for Ipv4Packet {}
-#[cfg(feature = "user")]
+#[cfg(feature = "std")]
 unsafe impl Pod for Ipv6Packet {}
-#[cfg(feature = "user")]
+#[cfg(feature = "std")]
 unsafe impl Pod for TokenBucketState {}
-#[cfg(feature = "user")]
+#[cfg(feature = "std")]
 unsafe impl Pod for TraficDirection {}
-#[cfg(feature = "user")]
+#[cfg(feature = "std")]
 unsafe impl aya::Pod for AllowListState {}
 
 impl From<EtherType> for ActivaterEtherTypes {

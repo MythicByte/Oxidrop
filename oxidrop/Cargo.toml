@@ -12,7 +12,7 @@ secrecy = { version = "0.10.3", features = ["serde"] }
 axum-login = "0.18.0"
 tower-sessions-redis-store = "0.16.0"
 tower = "0.5.3"
-oxidrop-common = { path = "../oxidrop-common", features = ["user"] }
+oxidrop-common = { path = "../oxidrop-common", features = ["std"] }
 tower-sessions = "0.14.0"
 tower-http = { version = "0.7", features = ["fs","trace","catch-panic","timeout","limit","compression-gzip", "compression-br","cors"] }
 clap = { version = "4.5.20", default-features = false, features = ["std","help","error-context","color","derive"] }
@@ -44,7 +44,7 @@ tracing = { workspace = true }
 
 [dev-dependencies]
 etherparse = "0.21.0"
-oxidrop-common = { path = "../oxidrop-common",features=["user"] }
+oxidrop-common = { path = "../oxidrop-common",features=["std"] }
 
 
 [build-dependencies]
