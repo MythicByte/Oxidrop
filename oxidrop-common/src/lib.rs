@@ -10,6 +10,19 @@ use serde::Deserialize;
 use serde::Serialize;
 #[cfg(feature = "std")]
 use utoipa::ToSchema;
+
+#[must_use]
+pub const fn ipv6_network_bytes(network: [u32; 4]) -> [u8; 16] {
+    let [first, second, third, fourth] = network;
+    let first = first.to_be_bytes();
+    let second = second.to_be_bytes();
+    let third = third.to_be_bytes();
+    let fourth = fourth.to_be_bytes();
+    [
+        first[0], first[1], first[2], first[3], second[0], second[1], second[2], second[3],
+        third[0], third[1], third[2], third[3], fourth[0], fourth[1], fourth[2], fourth[3],
+    ]
+}
 /// What to do with a list
 #[repr(C)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]

@@ -38,6 +38,7 @@ use oxidrop_common::{
     Ipv6Packet,
     RateProfile,
     TokenBucketState,
+    ipv6_network_bytes,
 };
 use serde::{
     Deserialize,
@@ -75,8 +76,8 @@ pub struct FirewallState {
     pub allow_list_v6: Arc<RwLock<HashMap<MapData, Ipv6Packet, AllowListState>>>,
     pub packet_counts_v4: Arc<RwLock<HashMap<MapData, Ipv4Packet, TokenBucketState>>>,
     pub packet_counts_v6: Arc<RwLock<HashMap<MapData, Ipv6Packet, TokenBucketState>>>,
-    pub subnet_matching_v4: Arc<RwLock<LpmTrie<MapData, u32, Action>>>,
-    pub subnet_matching_v6: Arc<RwLock<LpmTrie<MapData, [u32; 4], Action>>>,
+    pub subnet_matching_v4: Arc<RwLock<LpmTrie<MapData, [u8; 4], Action>>>,
+    pub subnet_matching_v6: Arc<RwLock<LpmTrie<MapData, [u8; 16], Action>>>,
     pub logs: Arc<LogStore>,
     pub ebpf: Option<Arc<Mutex<EbpfProgramm>>>,
     pub opt: Opt,
@@ -1038,7 +1039,7 @@ pub async fn modify_subnet_matching_v4(
 
         let mut map = state.subnet_matching_v4.write().await;
 
-        let key = Key::new(payload.prefix_len, payload.network.to_be());
+        let key = Key::new(payload.prefix_len, payload.network.to_be_bytes());
         if map.insert(&key, payload.action, 0).is_err() {
             return (
                 StatusCode::INTERNAL_SERVER_ERROR,
@@ -1093,7 +1094,7 @@ pub async fn remove_subnet_matching_v4(
 
         let mut map = state.subnet_matching_v4.write().await;
 
-        let key = Key::new(payload.prefix_len, payload.network.to_be());
+        let key = Key::new(payload.prefix_len, payload.network.to_be_bytes());
         if map.remove(&key).is_err() {
             return (
                 StatusCode::INTERNAL_SERVER_ERROR,
@@ -1179,7 +1180,7 @@ pub async fn modify_subnet_matching_v6(
 
         let mut map = state.subnet_matching_v6.write().await;
 
-        let key = Key::new(payload.prefix_len, payload.network.map(u32::to_be));
+        let key = Key::new(payload.prefix_len, ipv6_network_bytes(payload.network));
         if map.insert(&key, payload.action, 0).is_err() {
             return (
                 StatusCode::INTERNAL_SERVER_ERROR,
@@ -1234,7 +1235,7 @@ pub async fn remove_subnet_matching_v6(
 
         let mut map = state.subnet_matching_v6.write().await;
 
-        let key = Key::new(payload.prefix_len, payload.network.map(u32::to_be));
+        let key = Key::new(payload.prefix_len, ipv6_network_bytes(payload.network));
         if map.remove(&key).is_err() {
             return (
                 StatusCode::INTERNAL_SERVER_ERROR,
@@ -1448,9 +1449,9 @@ mod tests {
         let packet_counts_v6 =
             HashMap::<MapData, Ipv6Packet, TokenBucketState>::create(4096, 0).unwrap();
         let subnet_matching_v4 =
-            LpmTrie::<MapData, u32, Action>::create(2048, BPF_F_NO_PREALLOC).unwrap();
+            LpmTrie::<MapData, [u8; 4], Action>::create(2048, BPF_F_NO_PREALLOC).unwrap();
         let subnet_matching_v6 =
-            LpmTrie::<MapData, [u32; 4], Action>::create(2048, BPF_F_NO_PREALLOC).unwrap();
+            LpmTrie::<MapData, [u8; 16], Action>::create(2048, BPF_F_NO_PREALLOC).unwrap();
         // Actually initialize an in-memory database instead of pretending it implements Default
         let db = crate::db::Database::new("sqlite::memory:")
             .await
@@ -1724,7 +1725,7 @@ mod tests {
         .await;
         assert_eq!(status, StatusCode::OK);
 
-        let key = aya::maps::lpm_trie::Key::new(24, 16843264_u32.to_be());
+        let key = aya::maps::lpm_trie::Key::new(24, 16843264_u32.to_be_bytes());
         {
             let subnet_map = state.subnet_matching_v4.read().await;
             let action = subnet_map.get(&key, 0).unwrap();
@@ -1846,7 +1847,7 @@ mod tests {
         assert_ne!(status, StatusCode::OK); // Expect invalid prefix_len (33) to be rejected
 
         let subnet_map = state.subnet_matching_v4.read().await;
-        let key = aya::maps::lpm_trie::Key::new(33, 16843264_u32.to_be());
+        let key = aya::maps::lpm_trie::Key::new(33, 16843264_u32.to_be_bytes());
         assert!(subnet_map.get(&key, 0).is_err());
     }
 
@@ -1966,7 +1967,7 @@ mod tests {
         .await;
         assert_eq!(status, StatusCode::OK);
 
-        let key = aya::maps::lpm_trie::Key::new(96, [16843264_u32.to_be(), 0, 0, 0]);
+        let key = aya::maps::lpm_trie::Key::new(96, ipv6_network_bytes([16843264_u32, 0, 0, 0]));
         {
             let subnet_map = state.subnet_matching_v6.read().await;
             let action = subnet_map.get(&key, 0).unwrap();
@@ -2062,7 +2063,7 @@ mod tests {
 
         {
             let subnet_map = state.subnet_matching_v4.read().await;
-            let key = aya::maps::lpm_trie::Key::new(32, u32::MAX);
+            let key = aya::maps::lpm_trie::Key::new(32, [u8::MAX; 4]);
             let action = subnet_map.get(&key, 0).unwrap();
             assert_eq!(action, Action::Deny);
         }
@@ -2084,7 +2085,7 @@ mod tests {
         assert_eq!(status, StatusCode::OK);
 
         let subnet_map = state.subnet_matching_v6.read().await;
-        let key = aya::maps::lpm_trie::Key::new(128, [4294967295u32; 4]);
+        let key = aya::maps::lpm_trie::Key::new(128, [u8::MAX; 16]);
         let action = subnet_map.get(&key, 0).unwrap();
         assert_eq!(action, Action::Deny);
     }

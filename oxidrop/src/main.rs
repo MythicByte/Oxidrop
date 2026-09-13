@@ -21,6 +21,7 @@ use oxidrop::{
         LogStore,
     },
 };
+use oxidrop_common::ipv6_network_bytes;
 use rustix::time::{
     ClockId,
     clock_gettime,
@@ -85,12 +86,16 @@ async fn main() -> anyhow::Result<()> {
         .context("Failed to bootstrap the default admin user")?;
     for (network, prefix_len, action) in db.list_subnet_v4().await? {
         subnet_matching_v4
-            .insert(&Key::new(prefix_len, network.to_be()), action, 0)
+            .insert(&Key::new(prefix_len, network.to_be_bytes()), action, 0)
             .context("Failed to restore IPv4 subnet rule")?;
     }
     for (network, prefix_len, action) in db.list_subnet_v6().await? {
         subnet_matching_v6
-            .insert(&Key::new(prefix_len, network.map(u32::to_be)), action, 0)
+            .insert(
+                &Key::new(prefix_len, ipv6_network_bytes(network)),
+                action,
+                0,
+            )
             .context("Failed to restore IPv6 subnet rule")?;
     }
     let persisted_firewall_config = db.load_firewall_config().await?;

@@ -62,8 +62,8 @@ type EbpfMaps = (
     aya::maps::HashMap<aya::maps::MapData, oxidrop_common::Ipv6Packet, AllowListState>,
     aya::maps::HashMap<aya::maps::MapData, oxidrop_common::Ipv4Packet, TokenBucketState>,
     aya::maps::HashMap<aya::maps::MapData, oxidrop_common::Ipv6Packet, TokenBucketState>,
-    aya::maps::LpmTrie<aya::maps::MapData, u32, oxidrop_common::Action>,
-    aya::maps::LpmTrie<aya::maps::MapData, [u32; 4], oxidrop_common::Action>,
+    aya::maps::LpmTrie<aya::maps::MapData, [u8; 4], oxidrop_common::Action>,
+    aya::maps::LpmTrie<aya::maps::MapData, [u8; 16], oxidrop_common::Action>,
 );
 
 impl EbpfProgramm {
@@ -223,7 +223,7 @@ impl EbpfProgramm {
 
         let subnet_matching_v4: aya::maps::LpmTrie<
             aya::maps::MapData,
-            u32,
+            [u8; 4],
             oxidrop_common::Action,
         > = LpmTrie::try_from(
             ebpf.take_map("SUBNET_MATCHING_V4")
@@ -232,7 +232,7 @@ impl EbpfProgramm {
 
         let subnet_matching_v6: aya::maps::LpmTrie<
             aya::maps::MapData,
-            [u32; 4],
+            [u8; 16],
             oxidrop_common::Action,
         > = LpmTrie::try_from(
             ebpf.take_map("SUBNET_MATCHING_V6")

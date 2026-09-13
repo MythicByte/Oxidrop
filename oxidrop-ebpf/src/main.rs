@@ -101,14 +101,14 @@ static PACKET_COUNTS_V4: LruHashMap<Ipv4Packet, TokenBucketState> =
 static PACKET_COUNTS_V6: LruHashMap<Ipv6Packet, TokenBucketState> =
     LruHashMap::with_max_entries(4096, 0);
 
-/// IPv4 subnet matching (the key is a 32-bit integer).
+/// IPv4 subnet matching keyed by four network-order address bytes.
 #[map]
-static SUBNET_MATCHING_V4: LpmTrie<u32, Action> =
+static SUBNET_MATCHING_V4: LpmTrie<[u8; 4], Action> =
     LpmTrie::with_max_entries(2048, BPF_F_NO_PREALLOC);
 
-/// IPv6 subnet matching (the key is a 128-bit integer).
+/// IPv6 subnet matching keyed by sixteen network-order address bytes.
 #[map]
-static SUBNET_MATCHING_V6: LpmTrie<[u32; 4], Action> =
+static SUBNET_MATCHING_V6: LpmTrie<[u8; 16], Action> =
     LpmTrie::with_max_entries(2048, BPF_F_NO_PREALLOC);
 #[xdp]
 pub fn oxidrop(ctx: XdpContext) -> u32 {
@@ -197,23 +197,6 @@ fn ipv6_words(octets: [u8; 16]) -> Result<[u32; 4], FirewallError> {
     ])
 }
 
-#[inline(always)]
-fn ipv6_words_native(octets: [u8; 16]) -> Result<[u32; 4], FirewallError> {
-    let (chunks, remainder) = octets.as_chunks::<4>();
-    let [first, second, third, fourth] = chunks else {
-        return Err(FirewallError::OutOfBounds);
-    };
-    if !remainder.is_empty() {
-        return Err(FirewallError::OutOfBounds);
-    }
-    Ok([
-        u32::from_ne_bytes(*first),
-        u32::from_ne_bytes(*second),
-        u32::from_ne_bytes(*third),
-        u32::from_ne_bytes(*fourth),
-    ])
-}
-
 fn xdp_firewall(ctx: XdpContext) -> Result<u32, FirewallError> {
     let ethhdr: *const EthHdr = unsafe { ptr_at(&ctx, 0).map_err(|_| FirewallError::OutOfBounds)? };
     let config = CONFIG.get(0).unwrap_or(&DEFAULT_CONFIG);
@@ -276,7 +259,7 @@ fn xdp_firewall(ctx: XdpContext) -> Result<u32, FirewallError> {
                 TraficDirection::Outgoing => dest_addr,
             };
 
-            let subnet_key_v4 = Key::new(32, u32::from_ne_bytes(external_addr_v4.octets()));
+            let subnet_key_v4 = Key::new(32, external_addr_v4.octets());
             if config.subnet_activated
                 && !matches!(SUBNET_MATCHING_V4.get(&subnet_key_v4), Some(Action::Allow))
             {
@@ -457,8 +440,7 @@ fn xdp_firewall(ctx: XdpContext) -> Result<u32, FirewallError> {
                 TraficDirection::Outgoing => dst_octets,
             };
 
-            let subnet_external_array = ipv6_words_native(external_octets_v6)?;
-            let subnet_key_v6 = Key::new(128, subnet_external_array);
+            let subnet_key_v6 = Key::new(128, external_octets_v6);
             if config.subnet_activated
                 && !matches!(SUBNET_MATCHING_V6.get(&subnet_key_v6), Some(Action::Allow))
             {

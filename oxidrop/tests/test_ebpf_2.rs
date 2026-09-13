@@ -295,11 +295,11 @@ fn test_arp_bypasses_firewall() {
 fn test_ipv4_subnet_matching_slash24() {
     let mut harness = XdpTestHarness::new();
 
-    let mut subnet_map: LpmTrie<_, u32, Action> =
+    let mut subnet_map: LpmTrie<_, [u8; 4], Action> =
         LpmTrie::try_from(harness.ebpf.map_mut("SUBNET_MATCHING_V4").unwrap()).unwrap();
 
     let subnet_addr = u32::from_be_bytes([192, 168, 1, 0]);
-    let subnet_key = Key::new(24, subnet_addr.to_be());
+    let subnet_key = Key::new(24, subnet_addr.to_be_bytes());
     subnet_map.insert(&subnet_key, Action::Allow, 0).unwrap();
 
     let flow = Ipv4Packet::new(

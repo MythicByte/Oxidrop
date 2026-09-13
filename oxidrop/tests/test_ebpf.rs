@@ -22,6 +22,7 @@ use oxidrop_common::{
     FirewallConfig,
     Ipv4Packet,
     Ipv6Packet,
+    ipv6_network_bytes,
 };
 
 pub const XDP_ABORTED: u32 = 0;
@@ -85,14 +86,14 @@ impl XdpTestHarness {
     }
 
     pub fn allow_ipv4_flow(&mut self, flow: Ipv4Packet) {
-        let mut subnet_map: LpmTrie<_, u32, Action> =
+        let mut subnet_map: LpmTrie<_, [u8; 4], Action> =
             LpmTrie::try_from(self.ebpf.map_mut("SUBNET_MATCHING_V4").unwrap()).unwrap();
 
         // Insert BOTH source AND destination (your network + your server)
-        let src_key = Key::new(32, flow.source_addr.to_be());
+        let src_key = Key::new(32, flow.source_addr.to_be_bytes());
         subnet_map.insert(&src_key, Action::Allow, 0).unwrap();
 
-        let dst_key = Key::new(32, flow.destination_addr.to_be());
+        let dst_key = Key::new(32, flow.destination_addr.to_be_bytes());
         subnet_map.insert(&dst_key, Action::Allow, 0).unwrap();
 
         // Insert BOTH directions into allow list
@@ -130,14 +131,14 @@ impl XdpTestHarness {
     }
 
     pub fn allow_ipv6_flow(&mut self, flow: Ipv6Packet) {
-        let mut subnet_map: LpmTrie<_, [u32; 4], Action> =
+        let mut subnet_map: LpmTrie<_, [u8; 16], Action> =
             LpmTrie::try_from(self.ebpf.map_mut("SUBNET_MATCHING_V6").unwrap()).unwrap();
 
         // Insert BOTH source AND destination
-        let src_key = Key::new(128, flow.source_addr.map(u32::to_be));
+        let src_key = Key::new(128, ipv6_network_bytes(flow.source_addr));
         subnet_map.insert(&src_key, Action::Allow, 0).unwrap();
 
-        let dst_key = Key::new(128, flow.destination_addr.map(u32::to_be));
+        let dst_key = Key::new(128, ipv6_network_bytes(flow.destination_addr));
         subnet_map.insert(&dst_key, Action::Allow, 0).unwrap();
 
         // Insert BOTH directions into allow list
