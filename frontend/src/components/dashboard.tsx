@@ -9,7 +9,6 @@ import {
   Network,
   ScrollText,
   Settings,
-  ShieldCheck,
   Sun,
   User,
   Users,
@@ -141,11 +140,8 @@ export function Dashboard({ onLogout }: DashboardProps) {
             className="flex items-center gap-2 text-left"
             onClick={() => navigate("/dashboard")}
           >
-            <span className="grid size-9 place-items-center rounded-md bg-primary text-primary-foreground shadow-sm">
-              <ShieldCheck className="size-5" />
-            </span>
             <span>
-              <span className="block text-base font-bold tracking-tight">
+              <span className="block text-lg font-bold tracking-tight">
                 OxiDrop
               </span>
               <span className="hidden text-[10px] font-medium uppercase tracking-[0.18em] text-muted-foreground sm:block">
