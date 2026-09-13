@@ -440,6 +440,13 @@ export function FirewallConfiguration() {
       if (adapterResponse.response.ok && adapterResponse.data) {
         setAdapters(adapterResponse.data);
       }
+      if (action === "shutdown") {
+        setConfig((current) => ({
+          ...current,
+          incoming_ethernet_adapter: null,
+          output_ethernet_adapter: null,
+        }));
+      }
       setAttachmentNotice({
         kind: "success",
         message: action === "shutdown"

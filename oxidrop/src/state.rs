@@ -41,6 +41,7 @@ use oxidrop_common::{
 };
 use serde::{
     Deserialize,
+    Deserializer,
     Serialize,
 };
 use sqlx::FromRow;
@@ -323,6 +324,14 @@ pub struct SubnetMatchV6Update {
     pub action: Action,
 }
 
+fn deserialize_optional_optional<'de, D, T>(deserializer: D) -> Result<Option<Option<T>>, D::Error>
+where
+    D: Deserializer<'de>,
+    T: Deserialize<'de>,
+{
+    Ok(Some(Option::<T>::deserialize(deserializer)?))
+}
+
 // But we need a "patch-style" request type that allows partial updates
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct ConfigPatch {
@@ -343,8 +352,10 @@ pub struct ConfigPatch {
     #[serde(default)]
     pub subnet_activated: Option<bool>,
     #[serde(default)]
+    #[serde(deserialize_with = "deserialize_optional_optional")]
     pub incoming_ethernet_adapter: Option<Option<u32>>,
     #[serde(default)]
+    #[serde(deserialize_with = "deserialize_optional_optional")]
     pub output_ethernet_adapter: Option<Option<u32>>,
 }
 
@@ -1318,6 +1329,13 @@ pub async fn shutdown_ebpf(
         Ok(user) => user,
         Err(status) => return status.into_response(),
     };
+    let mut config = state.config.write().await;
+    let mut cfg = match config.get(&0, 0) {
+        Ok(cfg) => cfg,
+        Err(_) => {
+            return (StatusCode::INTERNAL_SERVER_ERROR, "CONFIG map unavailable").into_response();
+        }
+    };
     let ebpf = state.ebpf.as_ref().expect("checked above");
     let mut ebpf = ebpf.lock().await;
     if let Err(error) = ebpf.shut_down_working_ebpf() {
@@ -1332,6 +1350,24 @@ pub async fn shutdown_ebpf(
         return (
             StatusCode::INTERNAL_SERVER_ERROR,
             "Failed to shut down eBPF",
+        )
+            .into_response();
+    }
+    cfg.incoming_ethernet_adapter = None;
+    cfg.output_ethernet_adapter = None;
+    if let Err(error) = config.set(0, cfg, 0) {
+        tracing::error!("failed to clear adapter configuration: {error}");
+        return (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "Failed to clear eBPF adapter configuration",
+        )
+            .into_response();
+    }
+    if let Err(error) = state.db.save_firewall_config(&cfg).await {
+        tracing::error!("failed to persist cleared adapter configuration: {error}");
+        return (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "Failed to persist eBPF adapter configuration",
         )
             .into_response();
     }
@@ -1446,6 +1482,33 @@ mod tests {
             RolesUser,
         },
     };
+
+    #[test]
+    fn config_patch_deserializes_nullable_adapters() {
+        let patch: ConfigPatch = serde_json::from_str(
+            r#"{
+                "incoming_ethernet_adapter": null,
+                "output_ethernet_adapter": 7
+            }"#,
+        )
+        .unwrap();
+        assert_eq!(patch.incoming_ethernet_adapter, Some(None));
+        assert_eq!(patch.output_ethernet_adapter, Some(Some(7)));
+
+        let patch: ConfigPatch = serde_json::from_str(
+            r#"{
+                "incoming_ethernet_adapter": 3,
+                "output_ethernet_adapter": null
+            }"#,
+        )
+        .unwrap();
+        assert_eq!(patch.incoming_ethernet_adapter, Some(Some(3)));
+        assert_eq!(patch.output_ethernet_adapter, Some(None));
+
+        let patch: ConfigPatch = serde_json::from_str("{}").unwrap();
+        assert_eq!(patch.incoming_ethernet_adapter, None);
+        assert_eq!(patch.output_ethernet_adapter, None);
+    }
 
     async fn make_request(
         state: FirewallState,
