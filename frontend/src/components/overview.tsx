@@ -1,11 +1,31 @@
-import { useEffect, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import { useNavigate } from "react-router";
 import { Activity, ArrowUpRight, ShieldAlert, ShieldCheck } from "lucide-react";
-import { Card, CardContent } from "./ui/card.tsx";
+import {
+  Area,
+  AreaChart,
+  CartesianGrid,
+  ResponsiveContainer,
+  Tooltip,
+  YAxis,
+} from "recharts";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "./ui/card.tsx";
 import { client } from "./api.tsx";
 
 type Metrics = { ipv4: number; ipv6: number; allow4: number; allow6: number };
-type Series = { label: string; color: string; values: number[] };
+type Series = {
+  key: string;
+  label: string;
+  color: string;
+  values: number[];
+};
+type HistoryPoint = Metrics & { timestamp: number };
 
 function countEntries(value: unknown): number {
   return Array.isArray(value)
@@ -19,54 +39,130 @@ function formatCount(value: number | null): string {
   return value === null ? "—" : new Intl.NumberFormat().format(value);
 }
 
-function LineChart({ series }: { series: Series[] }) {
-  const max = Math.max(...series.flatMap(({ values }) => values), 1);
-  const point = (value: number, index: number, length: number) =>
-    `${(index / Math.max(length - 1, 1)) * 300},${108 - (value / max) * 82}`;
+function FirewallAreaChart({
+  series,
+  timestamps,
+  title,
+  description,
+}: {
+  series: Series[];
+  timestamps: number[];
+  title: string;
+  description: string;
+}) {
+  const chartId = `chart-${useId().replaceAll(":", "")}`;
+  const data = timestamps.map((timestamp, index) =>
+    Object.fromEntries([
+      ["timestamp", timestamp],
+      ...series.map(({ key, values }) => [key, values[index] ?? 0]),
+    ])
+  );
+  const hasData = data.length > 1;
+  const formatTimestamp = (value: number) =>
+    new Intl.DateTimeFormat(undefined, {
+      hour: "2-digit",
+      minute: "2-digit",
+    }).format(new Date(value));
 
   return (
-    <div className="mt-5">
-      <svg
-        viewBox="0 0 300 120"
-        className="h-56 w-full"
-        role="img"
-        aria-label="Firewall metrics line chart"
-      >
-        <path
-          d="M0 108H300 M0 72H300 M0 36H300"
-          className="stroke-border"
-          strokeWidth="1"
-          strokeDasharray="2 4"
-        />
-        {series.map(({ label, color, values }) => (
-          <polyline
-            key={label}
-            points={values.map((value, index) =>
-              point(value, index, values.length)
-            ).join(" ")}
-            fill="none"
-            stroke={color}
-            strokeWidth="2.5"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
-        ))}
-      </svg>
-      <div className="flex flex-wrap gap-x-5 gap-y-2 text-xs text-muted-foreground">
-        {series.map(({ label, color, values }) => (
-          <div key={label} className="flex items-center gap-2">
-            <span
-              className="size-2 rounded-full"
-              style={{ backgroundColor: color }}
-            />
-            <span>{label}</span>
-            <strong className="text-foreground">
-              {formatCount(values.at(-1) ?? 0)}
-            </strong>
-          </div>
-        ))}
-      </div>
-    </div>
+    <Card className="border shadow-sm">
+      <CardHeader>
+        <CardTitle>{title}</CardTitle>
+        <CardDescription>{description}</CardDescription>
+      </CardHeader>
+      <CardContent className="pt-0">
+        {hasData
+          ? (
+            <div
+              data-slot="chart"
+              data-chart={chartId}
+              className="flex aspect-video justify-center text-xs [&_.recharts-cartesian-axis-tick_text]:fill-muted-foreground [&_.recharts-cartesian-grid_line[stroke='#ccc']]:stroke-border/50 [&_.recharts-curve.recharts-tooltip-cursor]:stroke-border [&_.recharts-layer]:outline-hidden [&_.recharts-surface]:outline-hidden"
+            >
+              <style>
+                {`
+          [data-chart="${chartId}"] {
+            ${
+                  series.map(({ key, color }) => `--color-${key}: ${color};`)
+                    .join(
+                      "\n",
+                    )
+                }
+          }
+          .dark [data-chart="${chartId}"] {
+            ${
+                  series.map(({ key, color }) => `--color-${key}: ${color};`)
+                    .join(
+                      "\n",
+                    )
+                }
+          }
+        `}
+              </style>
+              <ResponsiveContainer width="100%" height="100%">
+                <AreaChart
+                  accessibilityLayer
+                  data={data}
+                  margin={{ left: 12, right: 12 }}
+                >
+                  <CartesianGrid vertical={false} />
+                  <YAxis
+                    hide
+                    domain={[0, (dataMax: number) =>
+                      Math.ceil(Math.max(dataMax, 1) * 1.15)]}
+                    allowDecimals={false}
+                  />
+                  <Tooltip
+                    cursor={false}
+                    contentStyle={{
+                      borderRadius: "0.75rem",
+                      border: "1px solid var(--border)",
+                      background: "var(--popover)",
+                      color: "var(--popover-foreground)",
+                    }}
+                    formatter={(value, name) => [
+                      formatCount(typeof value === "number" ? value : 0),
+                      series.find((item) =>
+                        item.key === name
+                      )?.label ?? name,
+                    ]}
+                    labelFormatter={(value) => formatTimestamp(Number(value))}
+                  />
+                  {series.map(({ key }) => (
+                    <Area
+                      key={key}
+                      dataKey={key}
+                      type="monotone"
+                      fill={`var(--color-${key})`}
+                      fillOpacity={0.4}
+                      stroke={`var(--color-${key})`}
+                      strokeWidth={2}
+                    />
+                  ))}
+                </AreaChart>
+              </ResponsiveContainer>
+            </div>
+          )
+          : (
+            <div className="flex aspect-video items-center justify-center text-sm text-muted-foreground">
+              {data.length === 0 ? "No data available" : "Collecting data…"}
+            </div>
+          )}
+        <div className="mt-3 flex flex-wrap gap-x-5 gap-y-2 text-xs text-muted-foreground">
+          {series.map(({ label, color, values }) => (
+            <div key={label} className="flex items-center gap-2">
+              <span
+                className="size-2 rounded-full"
+                style={{ backgroundColor: color }}
+              />
+              <span>{label}</span>
+              <strong className="text-foreground">
+                {formatCount(values.at(-1) ?? 0)}
+              </strong>
+            </div>
+          ))}
+        </div>
+      </CardContent>
+    </Card>
   );
 }
 
@@ -77,7 +173,7 @@ export function DashboardOverview() {
     allow4: 0,
     allow6: 0,
   });
-  const [history, setHistory] = useState<Metrics[]>([]);
+  const [history, setHistory] = useState<HistoryPoint[]>([]);
   const [ddosEnabled, setDdosEnabled] = useState<boolean | null>(null);
   const [enforcementActive, setEnforcementActive] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
@@ -115,7 +211,10 @@ export function DashboardOverview() {
             allow6: v6Allow.response.ok ? countEntries(v6Allow.data) : 0,
           };
           setMetrics(next);
-          setHistory((current) => [...current, next].slice(-24));
+          setHistory((current) => [...current, {
+            ...next,
+            timestamp: Date.now(),
+          }]);
           setDdosEnabled(config?.ddos_activated ?? null);
           setEnforcementActive(
             adapterResponse.response.ok &&
@@ -166,6 +265,22 @@ export function DashboardOverview() {
       "text-amber-600 bg-amber-500/10",
     ],
   ] as const;
+  const startOfToday = new Date();
+  startOfToday.setHours(0, 0, 0, 0);
+  const todayHistory = history.filter((point) =>
+    point.timestamp >= startOfToday.getTime()
+  );
+  const toSeries = (
+    points: HistoryPoint[],
+    key: keyof Metrics,
+    label: string,
+    color: string,
+  ): Series => ({
+    key,
+    label,
+    color,
+    values: points.map((point) => point[key]),
+  });
 
   return (
     <div className="mx-auto max-w-375 space-y-7 p-4 sm:p-6 lg:p-8">
@@ -244,90 +359,102 @@ export function DashboardOverview() {
       </div>
 
       <div className="grid gap-5 xl:grid-cols-2">
-        <Card className="border shadow-sm">
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <h2 className="font-semibold">Packets transmitted today</h2>
-                <p className="mt-1 text-sm text-muted-foreground">
-                  Traffic observations collected while this dashboard is open.
-                </p>
-              </div>
-              <span
-                className={`rounded-md px-2.5 py-1 text-xs font-semibold ${
-                  ddosEnabled
-                    ? "bg-emerald-500/10 text-emerald-700"
-                    : "bg-amber-500/10 text-amber-700"
-                }`}
-              >
-                DDoS {ddosEnabled === null
-                  ? "unknown"
-                  : ddosEnabled
-                  ? "enabled"
-                  : "disabled"}
-              </span>
-            </div>
-            <LineChart
-              series={[{
-                label: "Transmitted packets",
-                color: "#0ea5e9",
-                values: history.map(({ ipv4, ipv6 }) => ipv4 + ipv6),
-              }]}
-            />
-          </CardContent>
-        </Card>
-        <Card className="border shadow-sm">
-          <CardContent className="p-6">
-            <div>
-              <h2 className="font-semibold">Packet count</h2>
-              <p className="mt-1 text-sm text-muted-foreground">
-                IPv4 and IPv6 tracked flow entries over time.
-              </p>
-            </div>
-            <LineChart
-              series={[
-                {
-                  label: "IPv4 flows",
-                  color: "#38bdf8",
-                  values: history.map(({ ipv4 }) => ipv4),
-                },
-                {
-                  label: "IPv6 flows",
-                  color: "#8b5cf6",
-                  values: history.map(({ ipv6 }) => ipv6),
-                },
-              ]}
-            />
-          </CardContent>
-        </Card>
+        <FirewallAreaChart
+          title="Packets transmitted — all time"
+          description={`All observations captured during this dashboard session. DDoS ${
+            ddosEnabled === null
+              ? "status unknown"
+              : ddosEnabled
+              ? "enabled"
+              : "disabled"
+          }.`}
+          series={[{
+            key: "transmitted",
+            label: "Transmitted packets",
+            color: "#0ea5e9",
+            values: history.map(({ ipv4, ipv6 }) => ipv4 + ipv6),
+          }]}
+          timestamps={history.map(({ timestamp }) => timestamp)}
+        />
+        <FirewallAreaChart
+          title="Packets transmitted — today"
+          description="Observations since local midnight."
+          series={[
+            {
+              key: "transmitted",
+              label: "Transmitted packets",
+              color: "#0ea5e9",
+              values: todayHistory.map(({ ipv4, ipv6 }) => ipv4 + ipv6),
+            },
+          ]}
+          timestamps={todayHistory.map(({ timestamp }) => timestamp)}
+        />
+      </div>
+
+      <div className="grid gap-5 xl:grid-cols-2">
+        <FirewallAreaChart
+          title="Packet count — all time"
+          description="IPv4 and IPv6 tracked flow entries for this session."
+          series={[
+            {
+              key: "ipv4",
+              label: "IPv4 flows",
+              color: "#38bdf8",
+              values: history.map(({ ipv4 }) => ipv4),
+            },
+            {
+              key: "ipv6",
+              label: "IPv6 flows",
+              color: "#8b5cf6",
+              values: history.map(({ ipv6 }) => ipv6),
+            },
+          ]}
+          timestamps={history.map(({ timestamp }) => timestamp)}
+        />
+        <FirewallAreaChart
+          title="Packet count — today"
+          description="IPv4 and IPv6 tracked flow entries since local midnight."
+          series={[
+            toSeries(todayHistory, "ipv4", "IPv4 flows", "#38bdf8"),
+            toSeries(todayHistory, "ipv6", "IPv6 flows", "#8b5cf6"),
+          ]}
+          timestamps={todayHistory.map(({ timestamp }) => timestamp)}
+        />
+      </div>
+
+      <div className="grid gap-5 xl:grid-cols-2">
+        <FirewallAreaChart
+          title="Allow-list activity — all time"
+          description="IPv4 and IPv6 policy entries for this session."
+          series={[
+            {
+              key: "allow4",
+              label: "IPv4 allow list",
+              color: "#10b981",
+              values: history.map(({ allow4 }) => allow4),
+            },
+            {
+              key: "allow6",
+              label: "IPv6 allow list",
+              color: "#f59e0b",
+              values: history.map(({ allow6 }) => allow6),
+            },
+          ]}
+          timestamps={history.map(({ timestamp }) => timestamp)}
+        />
+        <FirewallAreaChart
+          title="Allow-list activity — today"
+          description="IPv4 and IPv6 policy entries since local midnight."
+          series={[
+            toSeries(todayHistory, "allow4", "IPv4 allow list", "#10b981"),
+            toSeries(todayHistory, "allow6", "IPv6 allow list", "#f59e0b"),
+          ]}
+          timestamps={todayHistory.map(({ timestamp }) => timestamp)}
+        />
       </div>
 
       <div className="grid gap-5 lg:grid-cols-[1.4fr_1fr]">
-        <Card className="border shadow-sm">
-          <CardContent className="p-6">
-            <div>
-              <h2 className="font-semibold">Allow list activity</h2>
-              <p className="mt-1 text-sm text-muted-foreground">
-                IPv4 and IPv6 policy entries over time.
-              </p>
-            </div>
-            <LineChart
-              series={[
-                {
-                  label: "IPv4 allow list",
-                  color: "#10b981",
-                  values: history.map(({ allow4 }) => allow4),
-                },
-                {
-                  label: "IPv6 allow list",
-                  color: "#f59e0b",
-                  values: history.map(({ allow6 }) => allow6),
-                },
-              ]}
-            />
-          </CardContent>
-        </Card>
-        <Card className="border shadow-sm">
+        <Card className="border shadow-sm lg:col-span-2">
           <CardContent className="p-6">
             <div className="flex items-start justify-between">
               <div>
