@@ -1,6 +1,10 @@
 use std::{
     fs,
     sync::Arc,
+    time::{
+        Duration,
+        UNIX_EPOCH,
+    },
 };
 
 use axum::{
@@ -96,6 +100,47 @@ pub struct LogEntry {
     pub destination_port: Option<i64>,
     pub protocol: Option<String>,
     pub action: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+pub struct AllowListV4Entry {
+    pub key: Ipv4Packet,
+    pub value: AllowListState,
+    pub last_seen_at: Option<i64>,
+}
+
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+pub struct AllowListV6Entry {
+    pub key: Ipv6Packet,
+    pub value: AllowListState,
+    pub last_seen_at: Option<i64>,
+}
+
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+pub struct PacketCountV4Entry {
+    pub key: Ipv4Packet,
+    pub value: TokenBucketState,
+    pub last_update_at: Option<i64>,
+}
+
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+pub struct PacketCountV6Entry {
+    pub key: Ipv6Packet,
+    pub value: TokenBucketState,
+    pub last_update_at: Option<i64>,
+}
+
+fn bpf_time_to_unix_ms(timestamp_ns: u64) -> Option<i64> {
+    let boot_seconds = fs::read_to_string("/proc/stat")
+        .ok()?
+        .lines()
+        .find_map(|line| line.strip_prefix("btime ")?.parse::<u64>().ok())?;
+    let timestamp =
+        UNIX_EPOCH + Duration::from_secs(boot_seconds) + Duration::from_nanos(timestamp_ns);
+    timestamp
+        .duration_since(UNIX_EPOCH)
+        .ok()
+        .and_then(|duration| i64::try_from(duration.as_millis()).ok())
 }
 
 #[derive(Clone)]
@@ -714,7 +759,7 @@ pub async fn update_config(
 #[utoipa::path(
     get,
     path = "/api/v1/config/allow_list/v4",
-    responses((status = 200, description = "Get all items in the IPv4 Allow List")),
+    responses((status = 200, description = "Get all items in the IPv4 Allow List", body = [AllowListV4Entry])),
     security(("cookie_auth" = []))
 )]
 /// GET: Fetch all items in the IPv4 Allow List
@@ -723,7 +768,11 @@ pub async fn get_allow_list_v4(State(state): State<FirewallState>) -> impl IntoR
 
     let mut entries = Vec::with_capacity(4096);
     for (key, value) in map.iter().flatten() {
-        entries.push((key, value));
+        entries.push(AllowListV4Entry {
+            key,
+            value,
+            last_seen_at: bpf_time_to_unix_ms(value.last_seen),
+        });
     }
 
     Json(entries).into_response()
@@ -769,6 +818,7 @@ pub async fn modify_allow_list_v4(
 #[utoipa::path(
     delete,
     path = "/api/v1/config/allow_list/v4",
+    request_body = Ipv4Packet,
     responses((status = 200, description = "All entries cleared"), (status = 401, description = "Unauthorized")),
     security(("cookie_auth" = []))
 )]
@@ -776,6 +826,7 @@ pub async fn modify_allow_list_v4(
 pub async fn clear_allow_list_v4(
     State(state): State<FirewallState>,
     auth_session: AuthSession<Database>,
+    payload: Option<Json<Ipv4Packet>>,
 ) -> impl IntoResponse {
     let user = match auth_session.user {
         Some(u) => u,
@@ -789,13 +840,16 @@ pub async fn clear_allow_list_v4(
     if caller.role == RolesUser::Admin && caller.permissions.contains(ActionPermissions::DELETE) {
         let mut map = state.allow_list_v4.write().await;
 
-        let mut keys_to_remove = Vec::with_capacity(4096);
-        for (key, _) in map.iter().flatten() {
-            keys_to_remove.push(key);
-        }
-
-        for key in keys_to_remove {
+        if let Some(Json(key)) = payload {
             let _ = map.remove(&key);
+        } else {
+            let mut keys_to_remove = Vec::with_capacity(4096);
+            for (key, _) in map.iter().flatten() {
+                keys_to_remove.push(key);
+            }
+            for key in keys_to_remove {
+                let _ = map.remove(&key);
+            }
         }
 
         StatusCode::OK.into_response()
@@ -807,7 +861,7 @@ pub async fn clear_allow_list_v4(
 #[utoipa::path(
     get,
     path = "/api/v1/config/allow_list/v6",
-    responses((status = 200, description = "Get all items in the IPv6 Allow List")),
+    responses((status = 200, description = "Get all items in the IPv6 Allow List", body = [AllowListV6Entry])),
     security(("cookie_auth" = []))
 )]
 /// GET: Fetch all items in the IPv4 Allow List
@@ -816,7 +870,11 @@ pub async fn get_allow_list_v6(State(state): State<FirewallState>) -> impl IntoR
 
     let mut entries = Vec::with_capacity(4096);
     for (key, value) in map.iter().flatten() {
-        entries.push((key, value));
+        entries.push(AllowListV6Entry {
+            key,
+            value,
+            last_seen_at: bpf_time_to_unix_ms(value.last_seen),
+        });
     }
 
     Json(entries).into_response()
@@ -864,6 +922,7 @@ pub async fn modify_allow_list_v6(
 #[utoipa::path(
     delete,
     path = "/api/v1/config/allow_list/v6",
+    request_body = Ipv6Packet,
     responses((status = 200, description = "All entries cleared"), (status = 401, description = "Unauthorized")),
     security(("cookie_auth" = []))
 )]
@@ -871,6 +930,7 @@ pub async fn modify_allow_list_v6(
 pub async fn clear_allow_list_v6(
     State(state): State<FirewallState>,
     auth_session: AuthSession<Database>,
+    payload: Option<Json<Ipv6Packet>>,
 ) -> impl IntoResponse {
     let user = match auth_session.user {
         Some(u) => u,
@@ -884,13 +944,16 @@ pub async fn clear_allow_list_v6(
     if caller.role == RolesUser::Admin && caller.permissions.contains(ActionPermissions::DELETE) {
         let mut map = state.allow_list_v6.write().await;
 
-        let mut keys_to_remove = Vec::with_capacity(4096);
-        for (key, _) in map.iter().flatten() {
-            keys_to_remove.push(key);
-        }
-
-        for key in keys_to_remove {
+        if let Some(Json(key)) = payload {
             let _ = map.remove(&key);
+        } else {
+            let mut keys_to_remove = Vec::with_capacity(4096);
+            for (key, _) in map.iter().flatten() {
+                keys_to_remove.push(key);
+            }
+            for key in keys_to_remove {
+                let _ = map.remove(&key);
+            }
         }
 
         StatusCode::OK.into_response()
@@ -902,7 +965,7 @@ pub async fn clear_allow_list_v6(
 #[utoipa::path(
     get,
     path = "/api/v1/config/packet_counts/v4",
-    responses((status = 200, description = "Get IPv4 packet counts")),
+    responses((status = 200, description = "Get IPv4 packet counts", body = [PacketCountV4Entry])),
     security(("cookie_auth" = []))
 )]
 pub async fn get_packet_counts_v4(State(state): State<FirewallState>) -> impl IntoResponse {
@@ -910,7 +973,11 @@ pub async fn get_packet_counts_v4(State(state): State<FirewallState>) -> impl In
 
     let mut entries = Vec::with_capacity(4096);
     for (key, value) in map.iter().flatten() {
-        entries.push((key, value));
+        entries.push(PacketCountV4Entry {
+            key,
+            value,
+            last_update_at: bpf_time_to_unix_ms(value.last_update),
+        });
     }
     Json(entries).into_response()
 }
@@ -955,12 +1022,14 @@ pub async fn modify_packet_counts_v4(
 #[utoipa::path(
     delete,
     path = "/api/v1/config/packet_counts/v4",
+    request_body = Ipv4Packet,
     responses((status = 200, description = "Cleared IPv4 packet counts"), (status = 401, description = "Unauthorized")),
     security(("cookie_auth" = []))
 )]
 pub async fn clear_packet_counts_v4(
     State(state): State<FirewallState>,
     auth_session: AuthSession<Database>,
+    payload: Option<Json<Ipv4Packet>>,
 ) -> impl IntoResponse {
     let user = match auth_session.user {
         Some(u) => u,
@@ -974,12 +1043,16 @@ pub async fn clear_packet_counts_v4(
     if caller.role == RolesUser::Admin && caller.permissions.contains(ActionPermissions::DELETE) {
         let mut map = state.packet_counts_v4.write().await;
 
-        let mut keys_to_remove = Vec::with_capacity(4096);
-        for (key, _) in map.iter().flatten() {
-            keys_to_remove.push(key);
-        }
-        for key in keys_to_remove {
+        if let Some(Json(key)) = payload {
             let _ = map.remove(&key);
+        } else {
+            let mut keys_to_remove = Vec::with_capacity(4096);
+            for (key, _) in map.iter().flatten() {
+                keys_to_remove.push(key);
+            }
+            for key in keys_to_remove {
+                let _ = map.remove(&key);
+            }
         }
         StatusCode::OK.into_response()
     } else {
@@ -989,7 +1062,7 @@ pub async fn clear_packet_counts_v4(
 #[utoipa::path(
     get,
     path = "/api/v1/config/packet_counts/v6",
-    responses((status = 200, description = "Get IPv6 packet counts")),
+    responses((status = 200, description = "Get IPv6 packet counts", body = [PacketCountV6Entry])),
     security(("cookie_auth" = []))
 )]
 pub async fn get_packet_counts_v6(State(state): State<FirewallState>) -> impl IntoResponse {
@@ -997,7 +1070,11 @@ pub async fn get_packet_counts_v6(State(state): State<FirewallState>) -> impl In
 
     let mut entries = Vec::with_capacity(4096);
     for (key, value) in map.iter().flatten() {
-        entries.push((key, value));
+        entries.push(PacketCountV6Entry {
+            key,
+            value,
+            last_update_at: bpf_time_to_unix_ms(value.last_update),
+        });
     }
     Json(entries).into_response()
 }
@@ -1042,13 +1119,14 @@ pub async fn modify_packet_counts_v6(
 #[utoipa::path(
     delete,
     path = "/api/v1/config/packet_counts/v6",
+    request_body = Ipv6Packet,
     responses((status = 200, description = "Cleared IPv6 packet counts"), (status = 401, description = "Unauthorized")),
     security(("cookie_auth" = []))
 )]
 pub async fn clear_packet_counts_v6(
     State(state): State<FirewallState>,
-
     auth_session: AuthSession<Database>,
+    payload: Option<Json<Ipv6Packet>>,
 ) -> impl IntoResponse {
     let user = match auth_session.user {
         Some(u) => u,
@@ -1062,12 +1140,16 @@ pub async fn clear_packet_counts_v6(
     if caller.role == RolesUser::Admin && caller.permissions.contains(ActionPermissions::DELETE) {
         let mut map = state.packet_counts_v6.write().await;
 
-        let mut keys_to_remove = Vec::with_capacity(4096);
-        for (key, _) in map.iter().flatten() {
-            keys_to_remove.push(key);
-        }
-        for key in keys_to_remove {
+        if let Some(Json(key)) = payload {
             let _ = map.remove(&key);
+        } else {
+            let mut keys_to_remove = Vec::with_capacity(4096);
+            for (key, _) in map.iter().flatten() {
+                keys_to_remove.push(key);
+            }
+            for key in keys_to_remove {
+                let _ = map.remove(&key);
+            }
         }
         StatusCode::OK.into_response()
     } else {
@@ -2168,7 +2250,7 @@ mod tests {
             StatusCode::OK,
             "allow-list must remain readable after repeated updates; body={body}"
         );
-        let entries: Vec<(Ipv4Packet, AllowListState)> =
+        let entries: Vec<AllowListV4Entry> =
             serde_json::from_str(&body).expect("allow-list response must remain valid JSON");
         assert_eq!(
             entries.len(),
@@ -2418,11 +2500,11 @@ mod tests {
         let (status, body) =
             make_request(state.clone(), Method::GET, "/allow_list/v4", None, None).await;
         assert_eq!(status, StatusCode::OK);
-        let entries: Vec<(Ipv4Packet, AllowListState)> = serde_json::from_str(&body).unwrap();
+        let entries: Vec<AllowListV4Entry> = serde_json::from_str(&body).unwrap();
         assert_eq!(entries.len(), 1);
         let entry = entries.first().expect("allow-list entry should exist");
-        assert_eq!(entry.0.source_addr, 16843264);
-        assert_eq!(entry.1.action, Action::Allow);
+        assert_eq!(entry.key.source_addr, 16843264);
+        assert_eq!(entry.value.action, Action::Allow);
 
         let (status, _) =
             make_request(state.clone(), Method::DELETE, "/allow_list/v4", None, None).await;
@@ -2431,7 +2513,7 @@ mod tests {
         let (status, body) =
             make_request(state.clone(), Method::GET, "/allow_list/v4", None, None).await;
         assert_eq!(status, StatusCode::OK);
-        let entries: Vec<(Ipv4Packet, AllowListState)> = serde_json::from_str(&body).unwrap();
+        let entries: Vec<AllowListV4Entry> = serde_json::from_str(&body).unwrap();
         assert!(entries.is_empty());
     }
 
@@ -2507,10 +2589,10 @@ mod tests {
         let (status, body) =
             make_request(state.clone(), Method::GET, "/packet_counts/v4", None, None).await;
         assert_eq!(status, StatusCode::OK);
-        let entries: Vec<(Ipv4Packet, TokenBucketState)> = serde_json::from_str(&body).unwrap();
+        let entries: Vec<PacketCountV4Entry> = serde_json::from_str(&body).unwrap();
         assert_eq!(entries.len(), 1);
         let entry = entries.first().expect("packet-count entry should exist");
-        assert_eq!(entry.1.tokens, 100);
+        assert_eq!(entry.value.tokens, 100);
 
         let (status, _) = make_request(
             state.clone(),
@@ -2525,7 +2607,7 @@ mod tests {
         let (status, body) =
             make_request(state.clone(), Method::GET, "/packet_counts/v4", None, None).await;
         assert_eq!(status, StatusCode::OK);
-        let entries: Vec<(Ipv4Packet, TokenBucketState)> = serde_json::from_str(&body).unwrap();
+        let entries: Vec<PacketCountV4Entry> = serde_json::from_str(&body).unwrap();
         assert!(entries.is_empty());
     }
 
@@ -2660,11 +2742,11 @@ mod tests {
         let (status, body) =
             make_request(state.clone(), Method::GET, "/allow_list/v6", None, None).await;
         assert_eq!(status, StatusCode::OK);
-        let entries: Vec<(Ipv6Packet, AllowListState)> = serde_json::from_str(&body).unwrap();
+        let entries: Vec<AllowListV6Entry> = serde_json::from_str(&body).unwrap();
         assert_eq!(entries.len(), 1);
         let entry = entries.first().expect("allow-list entry should exist");
-        assert_eq!(entry.0.source_addr, [16843264, 0, 0, 1]);
-        assert_eq!(entry.1.action, Action::Allow);
+        assert_eq!(entry.key.source_addr, [16843264, 0, 0, 1]);
+        assert_eq!(entry.value.action, Action::Allow);
 
         let (status, _) =
             make_request(state.clone(), Method::DELETE, "/allow_list/v6", None, None).await;
@@ -2673,7 +2755,7 @@ mod tests {
         let (status, body) =
             make_request(state.clone(), Method::GET, "/allow_list/v6", None, None).await;
         assert_eq!(status, StatusCode::OK);
-        let entries: Vec<(Ipv6Packet, AllowListState)> = serde_json::from_str(&body).unwrap();
+        let entries: Vec<AllowListV6Entry> = serde_json::from_str(&body).unwrap();
         assert!(entries.is_empty());
     }
 
@@ -2749,10 +2831,10 @@ mod tests {
         let (status, body) =
             make_request(state.clone(), Method::GET, "/packet_counts/v6", None, None).await;
         assert_eq!(status, StatusCode::OK);
-        let entries: Vec<(Ipv6Packet, TokenBucketState)> = serde_json::from_str(&body).unwrap();
+        let entries: Vec<PacketCountV6Entry> = serde_json::from_str(&body).unwrap();
         assert_eq!(entries.len(), 1);
         let entry = entries.first().expect("packet-count entry should exist");
-        assert_eq!(entry.1.tokens, 100);
+        assert_eq!(entry.value.tokens, 100);
 
         let (status, _) = make_request(
             state.clone(),
@@ -2767,7 +2849,7 @@ mod tests {
         let (status, body) =
             make_request(state.clone(), Method::GET, "/packet_counts/v6", None, None).await;
         assert_eq!(status, StatusCode::OK);
-        let entries: Vec<(Ipv6Packet, TokenBucketState)> = serde_json::from_str(&body).unwrap();
+        let entries: Vec<PacketCountV6Entry> = serde_json::from_str(&body).unwrap();
         assert!(entries.is_empty());
     }
 

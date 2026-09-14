@@ -22,6 +22,7 @@ use oxidrop::{
         RolesUser,
     },
     state::{
+        AllowListV4Entry,
         FirewallState,
         LogStore,
         config_router,
@@ -29,9 +30,7 @@ use oxidrop::{
 };
 use oxidrop_common::{
     Action,
-    AllowListState,
     FirewallConfig,
-    Ipv4Packet,
     Ipv6Packet,
     TokenBucketState,
 };
@@ -299,7 +298,7 @@ async fn api_workflow_enforces_permissions_and_clears_state() {
     );
     let (status, body) = request(state.clone(), Method::GET, "/allow_list/v4", None, admin).await;
     assert_eq!(status, StatusCode::OK, "admin must list flow state: {body}");
-    let entries: Vec<(Ipv4Packet, AllowListState)> =
+    let entries: Vec<AllowListV4Entry> =
         serde_json::from_str(&body).expect("flow state response must decode");
     assert_eq!(entries.len(), 1, "exactly one flow state must be present");
 
@@ -316,7 +315,7 @@ async fn api_workflow_enforces_permissions_and_clears_state() {
         StatusCode::OK,
         "cleared state must remain readable: {body}"
     );
-    let entries: Vec<(Ipv4Packet, AllowListState)> =
+    let entries: Vec<AllowListV4Entry> =
         serde_json::from_str(&body).expect("cleared flow response must decode");
     assert!(
         entries.is_empty(),
