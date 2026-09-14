@@ -77,15 +77,20 @@ policy; use `sudo oxidrop` if it is not supported.
 To display the available configuration options:
 
 ```shell
-cargo run -- --help
+oxidrop --help
 ```
 
 The backend accepts:
 
 ```text
-      --http-port <HTTP_PORT>                HTTP port (default: 3000)
-  -i, --incoming-adapter <INCOMING_ADAPTER>  incoming network interface index
-  -o, --output-adapter <OUTPUT_ADAPTER>      outgoing network interface index
+  -p, --http-port <HTTP_PORT>
+          choose http port [default: 3000]
+  -i, --incoming-adapter <INCOMING_ADAPTER>
+          The network interface index for incoming traffic (e.g., 2)
+  -o, --output-adapter <OUTPUT_ADAPTER>
+          The network interface index for outgoing traffic (e.g., 3)
+  -h, --help
+          Print help
 ```
 
 For example:

@@ -8,7 +8,7 @@ use clap::Parser;
 #[derive(Debug, Clone, Parser)]
 pub struct Opt {
     /// choose http port
-    #[clap(long, default_value_t = 3000)]
+    #[clap(short = 'p', long, default_value_t = 3000)]
     pub http_port: u16,
     /// The network interface index for incoming traffic (e.g., 2)
     #[clap(long, short)]
