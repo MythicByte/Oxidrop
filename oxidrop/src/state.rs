@@ -102,13 +102,58 @@ pub struct LogEntry {
 pub struct LogStore {
     db: Database,
     tx: broadcast::Sender<LogEntry>,
+    _prune_worker: Option<Arc<PruneWorker>>,
 }
+
+struct PruneWorker {
+    abort_handle: tokio::task::AbortHandle,
+}
+
+impl Drop for PruneWorker {
+    fn drop(&mut self) {
+        self.abort_handle.abort();
+    }
+}
+
+const MAX_PERSISTED_LOGS: i64 = 100_000;
 
 impl LogStore {
     #[must_use]
     pub fn new(db: Database) -> Self {
         let (tx, _) = broadcast::channel(256);
-        Self { db, tx }
+        let prune_worker = tokio::runtime::Handle::try_current().ok().map(|handle| {
+            let task = handle.spawn(Self::prune_periodically(db.clone()));
+            Arc::new(PruneWorker {
+                abort_handle: task.abort_handle(),
+            })
+        });
+        Self {
+            db,
+            tx,
+            _prune_worker: prune_worker,
+        }
+    }
+
+    async fn prune_periodically(db: Database) {
+        let mut interval = tokio::time::interval(std::time::Duration::from_secs(60));
+        loop {
+            interval.tick().await;
+            if let Err(error) = sqlx::query!(
+                "DELETE FROM firewall_logs
+                 WHERE id <= (
+                     SELECT id
+                     FROM firewall_logs
+                     ORDER BY id DESC
+                     LIMIT 1 OFFSET ?
+                 )",
+                MAX_PERSISTED_LOGS,
+            )
+            .execute(&db.pool)
+            .await
+            {
+                tracing::error!("failed to prune persisted firewall logs: {error}");
+            }
+        }
     }
 
     pub async fn record(&self, level: &str, message: &str, actor: Option<&str>) {
