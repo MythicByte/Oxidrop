@@ -40,6 +40,9 @@ use sqlx::{
 use thiserror::Error;
 use tracing::warn;
 use utoipa::ToSchema;
+
+const DEFAULT_ADMIN_USERNAME: &str = "admin";
+const DEFAULT_ADMIN_PASSWORD: &str = "password";
 #[derive(Serialize, Deserialize, FromRow, ToSchema)]
 pub struct UserRow {
     pub id: i64,
@@ -540,51 +543,49 @@ impl Database {
             .await?;
 
         if count == 0 {
-            warn!("WARN: Database empty. Bootstrapping default user 'admin'.");
-            let temp_password = "password";
-            warn!("WARN: Temporary password is: {}", temp_password);
-            if let Err(error) = self
-                .record_log(
-                    "WARN",
-                    "Database empty; bootstrapping default admin",
-                    Some("system"),
-                )
-                .await
-            {
-                warn!("Failed to record bootstrap log: {error}");
-            }
-            if let Err(error) = self
-                .record_log(
-                    "WARN",
-                    "Temporary default admin password was generated",
-                    Some("system"),
-                )
-                .await
-            {
-                warn!("Failed to record bootstrap log: {error}");
-            }
-
-            let insert_result = self
-                .internal_insert_user(
-                    "admin",
-                    temp_password,
-                    RolesUser::Admin,
-                    ActionPermissions::all(),
-                    1, // password_must_be_changed = 1
-                    true,
-                )
-                .await;
-
-            // Handle the race condition where another thread beat us to the insertion
-            match insert_result {
-                Ok(_) => {}
-                Err(UserError::UserExists(_)) => {
-                    // Another thread just created the admin user. This is fine.
-                }
-                Err(e) => return Err(e), // Bubble up actual database/internal errors
-            }
+            self.create_default_admin().await?;
         }
         Ok(())
+    }
+
+    async fn create_default_admin(&self) -> Result<(), UserError> {
+        warn!("WARN: Database empty. Bootstrapping default user 'admin'.");
+        warn!("WARN: Temporary password is: {}", DEFAULT_ADMIN_PASSWORD);
+        if let Err(error) = self
+            .record_log(
+                "WARN",
+                "Database empty; bootstrapping default admin",
+                Some("system"),
+            )
+            .await
+        {
+            warn!("Failed to record bootstrap log: {error}");
+        }
+        if let Err(error) = self
+            .record_log(
+                "WARN",
+                "Temporary default admin password was generated",
+                Some("system"),
+            )
+            .await
+        {
+            warn!("Failed to record bootstrap log: {error}");
+        }
+
+        match self
+            .internal_insert_user(
+                DEFAULT_ADMIN_USERNAME,
+                DEFAULT_ADMIN_PASSWORD,
+                RolesUser::Admin,
+                ActionPermissions::all(),
+                1,
+                true,
+            )
+            .await
+        {
+            Ok(()) | Err(UserError::UserExists(_)) => Ok(()),
+            Err(error) => Err(error),
+        }
     }
     /// Internal function handling the actual DB insertion to avoid duplicating code.
     async fn internal_insert_user(

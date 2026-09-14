@@ -51,6 +51,19 @@ sudo systemctl enable --now redis
 
 The backend uses SQLite and creates `oxidrop.db` in the working directory.
 
+### Initial administrator account
+
+On first start, Oxidrop creates the default administrator account:
+
+```text
+Username: admin
+Password: password
+```
+
+The administrator must change this password immediately after the first
+login. If all users are deleted, Oxidrop automatically recreates this after a restart
+default administrator account and requires its password to be changed again.
+
 ## Build and run
 
 Run the installed backend with:
