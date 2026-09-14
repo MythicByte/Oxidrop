@@ -30,6 +30,7 @@ use axum_login::{
     login_required,
 };
 use mime_guess::from_path;
+use oxidrop_common::FirewallConfig;
 use rust_embed::RustEmbed;
 use utoipa::OpenApi;
 
@@ -165,6 +166,7 @@ async fn frontend_fallback(request: Request) -> Response {
         SubnetMatchV4Update,
         SubnetMatchV6Update,
         ConfigPatch,
+        FirewallConfig,
         UserRow,
         TrafficCounters,
         TrafficStatsResponse
