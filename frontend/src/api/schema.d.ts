@@ -368,7 +368,7 @@ export interface components {
       /** Format: int32 */
       output_ethernet_adapter?: number | null;
       /** Format: int32 */
-      protcol_allowed?: number | null;
+      protocol_allowed?: number | null;
       subnet_activated?: boolean | null;
       tcp_profile?: null | components["schemas"]["RateProfile"];
       udp_profile?: null | components["schemas"]["RateProfile"];

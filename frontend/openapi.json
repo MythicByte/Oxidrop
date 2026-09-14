@@ -1062,7 +1062,7 @@
             "format": "int32",
             "minimum": 0
           },
-          "protcol_allowed": {
+          "protocol_allowed": {
             "type": [
               "integer",
               "null"
