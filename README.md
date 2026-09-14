@@ -23,10 +23,16 @@ Install Rust, the nightly source component, and the eBPF linker:
 
 ```shell
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
-source "$HOME/.cargo/env"
 rustup toolchain install stable
 rustup toolchain install nightly --component rust-src
 cargo install bpf-linker --locked
+```
+
+Install Deno because the Cargo build compiles the frontend before embedding
+its assets into the backend binary:
+
+```shell
+curl -fsSL https://deno.land/install.sh | sh
 ```
 
 Install Oxidrop directly from GitHub with Cargo:
@@ -50,18 +56,13 @@ The backend uses SQLite and creates `oxidrop.db` in the working directory.
 Run the installed backend with:
 
 ```shell
-oxidrop
-```
-
-Loading and attaching the eBPF program may require elevated privileges. If the
-command fails with a permissions error, run it with `sudo`:
-
-```shell
 sudo oxidrop
 ```
 
-Alternatively, grant the installed binary the required Linux capabilities and
-run it as your normal user:
+Creating eBPF maps and attaching the programs requires elevated Linux
+privileges. Running the installed binary without `sudo` can fail with
+`Operation not permitted` while creating the `AYA_LOGS` map. If you want to
+run it as your normal user instead, grant the binary the required capabilities:
 
 ```shell
 sudo setcap cap_bpf,cap_net_admin,cap_perfmon+ep "$(command -v oxidrop)"
@@ -109,7 +110,9 @@ and frontend checks:
 ```
 
 The namespace and eBPF integration tests require elevated Linux networking
-privileges. The frontend is not required to build or run the Axum backend.
+privileges. The frontend is compiled and embedded during the backend build, so
+the installed binary does not need the source checkout or `frontend/dist` at
+runtime.
 
 ## Acknowledgements
 

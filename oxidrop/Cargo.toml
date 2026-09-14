@@ -11,6 +11,8 @@ utoipa = { version = "5.5.0", features = ["axum_extras"] }
 secrecy = { version = "0.10.3", features = ["serde"] }
 axum-login = "0.18.0"
 tower-sessions-redis-store = "0.16.0"
+mime_guess = "2.0.5"
+rust-embed = "8.12.0"
 tower = "0.5.3"
 oxidrop-common = { path = "../oxidrop-common", features = ["std"] }
 tower-sessions = "0.14.0"

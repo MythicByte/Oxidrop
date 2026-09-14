@@ -2,6 +2,7 @@ use std::net::SocketAddr;
 
 use axum::{
     Router,
+    body::Body,
     extract::{
         ConnectInfo,
         Request,
@@ -28,10 +29,8 @@ use axum_login::{
     AuthSession,
     login_required,
 };
-use tower_http::services::{
-    ServeDir,
-    ServeFile,
-};
+use mime_guess::from_path;
+use rust_embed::RustEmbed;
 use utoipa::OpenApi;
 
 use crate::{
@@ -70,6 +69,34 @@ use crate::{
         config_router,
     },
 };
+
+#[derive(RustEmbed)]
+#[folder = "../frontend/dist/"]
+struct FrontendAssets;
+
+async fn frontend_fallback(request: Request) -> Response {
+    let path = request.uri().path().trim_start_matches('/');
+    let Some((asset_path, asset)) = FrontendAssets::get(path)
+        .map(|asset| (path, asset))
+        .or_else(|| FrontendAssets::get("index.html").map(|asset| ("index.html", asset)))
+    else {
+        return (
+            axum::http::StatusCode::NOT_FOUND,
+            "frontend assets are unavailable",
+        )
+            .into_response();
+    };
+
+    (
+        [(
+            axum::http::header::CONTENT_TYPE,
+            from_path(asset_path).first_or_octet_stream().as_ref(),
+        )],
+        Body::from(asset.data.into_owned()),
+    )
+        .into_response()
+}
+
 #[derive(OpenApi)]
 #[openapi(
     info(
@@ -151,11 +178,7 @@ pub fn combined_router(state: FirewallState) -> Router {
     // .merge(unsafe_router());
     Router::new()
         .nest("/api/v1", router)
-        // BrowserRouter routes do not exist as files, so serve the SPA entrypoint
-        // after checking whether the request matches a built asset.
-        .fallback_service(
-            ServeDir::new("frontend/dist").fallback(ServeFile::new("frontend/dist/index.html")),
-        )
+        .fallback(frontend_fallback)
         .layer(from_fn_with_state(state.clone(), log_failed_requests))
         .with_state(state)
 }
