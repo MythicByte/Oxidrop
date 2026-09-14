@@ -9,6 +9,8 @@ use serde::Deserialize;
 #[cfg(feature = "std")]
 use serde::Serialize;
 #[cfg(feature = "std")]
+use serde::Serializer;
+#[cfg(feature = "std")]
 use utoipa::ToSchema;
 
 #[must_use]
@@ -100,6 +102,13 @@ pub struct FirewallConfig {
     pub udp_profile: RateProfile,
     pub icmp_profile: RateProfile,
     pub default_profile: RateProfile,
+    #[cfg_attr(
+        feature = "std",
+        serde(
+            serialize_with = "serialize_protocol_allowed",
+            deserialize_with = "deserialize_protocol_allowed"
+        )
+    )]
     #[cfg_attr(feature = "std", schema(value_type = u8))]
     pub protocol_allowed: ActivaterEtherTypes,
     /// if ddos protection is on
@@ -110,6 +119,27 @@ pub struct FirewallConfig {
     pub incoming_ethernet_adapter: Option<u32>,
     /// The ethernet address for outcoming traffic
     pub output_ethernet_adapter: Option<u32>,
+}
+
+#[cfg(feature = "std")]
+fn serialize_protocol_allowed<S>(
+    value: &ActivaterEtherTypes,
+    serializer: S,
+) -> Result<S::Ok, S::Error>
+where
+    S: Serializer,
+{
+    serializer.serialize_u16(value.bits())
+}
+
+#[cfg(feature = "std")]
+fn deserialize_protocol_allowed<'de, D>(deserializer: D) -> Result<ActivaterEtherTypes, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let bits = u16::deserialize(deserializer)?;
+    ActivaterEtherTypes::from_bits(bits)
+        .ok_or_else(|| serde::de::Error::custom(format!("unknown protocol mask: {bits}")))
 }
 
 /// Tightly packed 5-Tuple for IPv4 state tracking
