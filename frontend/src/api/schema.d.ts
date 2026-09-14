@@ -387,6 +387,28 @@ export interface components {
     DeleteUserReq: {
       target_username: string;
     };
+    FirewallConfig: {
+      /** @description if ddos protection is on */
+      ddos_activated: boolean;
+      default_profile: components["schemas"]["RateProfile"];
+      icmp_profile: components["schemas"]["RateProfile"];
+      /**
+       * Format: int32
+       * @description The ethernet address for incoming traffic
+       */
+      incoming_ethernet_adapter?: number | null;
+      /**
+       * Format: int32
+       * @description The ethernet address for outcoming traffic
+       */
+      output_ethernet_adapter?: number | null;
+      /** Format: int32 */
+      protocol_allowed: number;
+      /** @description if ddos protection is on */
+      subnet_activated: boolean;
+      tcp_profile: components["schemas"]["RateProfile"];
+      udp_profile: components["schemas"]["RateProfile"];
+    };
     /**
      * @description Tightly packed 5-Tuple for IPv4 state tracking
      *     Total size: 16 bytes (Strictly aligned)
@@ -533,6 +555,15 @@ export interface operations {
     responses: {
       /** @description Get current firewall configuration */
       200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["FirewallConfig"];
+        };
+      };
+      /** @description CONFIG map not initialized */
+      500: {
         headers: {
           [name: string]: unknown;
         };

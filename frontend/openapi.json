@@ -19,7 +19,17 @@
         "operationId": "get_config",
         "responses": {
           "200": {
-            "description": "Get current firewall configuration"
+            "description": "Get current firewall configuration",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FirewallConfig"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "CONFIG map not initialized"
           }
         },
         "security": [
@@ -1148,6 +1158,63 @@
         "properties": {
           "target_username": {
             "type": "string"
+          }
+        }
+      },
+      "FirewallConfig": {
+        "type": "object",
+        "required": [
+          "tcp_profile",
+          "udp_profile",
+          "icmp_profile",
+          "default_profile",
+          "protocol_allowed",
+          "ddos_activated",
+          "subnet_activated"
+        ],
+        "properties": {
+          "ddos_activated": {
+            "type": "boolean",
+            "description": "if ddos protection is on"
+          },
+          "default_profile": {
+            "$ref": "#/components/schemas/RateProfile"
+          },
+          "icmp_profile": {
+            "$ref": "#/components/schemas/RateProfile"
+          },
+          "incoming_ethernet_adapter": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "The ethernet address for incoming traffic",
+            "minimum": 0
+          },
+          "output_ethernet_adapter": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "The ethernet address for outcoming traffic",
+            "minimum": 0
+          },
+          "protocol_allowed": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "subnet_activated": {
+            "type": "boolean",
+            "description": "if ddos protection is on"
+          },
+          "tcp_profile": {
+            "$ref": "#/components/schemas/RateProfile"
+          },
+          "udp_profile": {
+            "$ref": "#/components/schemas/RateProfile"
           }
         }
       },
