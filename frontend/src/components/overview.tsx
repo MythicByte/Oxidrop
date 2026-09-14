@@ -7,15 +7,6 @@ import { client } from "./api.tsx";
 type Metrics = { ipv4: number; ipv6: number; allow4: number; allow6: number };
 type Series = { label: string; color: string; values: number[] };
 
-async function readJson(response: Response): Promise<unknown> {
-  if (!response.ok) return null;
-  try {
-    return await response.json();
-  } catch {
-    return null;
-  }
-}
-
 function countEntries(value: unknown): number {
   return Array.isArray(value)
     ? value.length
@@ -111,23 +102,17 @@ export function DashboardOverview() {
           fetch("/api/v1/config", { credentials: "include" }),
           client.GET("/api/v1/config/adapters"),
         ]);
-        const values = await Promise.all(
-          [
-            v4Count.response,
-            v6Count.response,
-            v4Allow.response,
-            v6Allow.response,
-          ].map(readJson),
-        );
-        const config = await readJson(configResponse) as {
-          ddos_activated?: boolean;
-        } | null;
+        const config = configResponse.ok
+          ? await configResponse.json() as {
+            ddos_activated?: boolean;
+          }
+          : null;
         if (active) {
           const next = {
-            ipv4: countEntries(values[0]),
-            ipv6: countEntries(values[1]),
-            allow4: countEntries(values[2]),
-            allow6: countEntries(values[3]),
+            ipv4: v4Count.response.ok ? countEntries(v4Count.data) : 0,
+            ipv6: v6Count.response.ok ? countEntries(v6Count.data) : 0,
+            allow4: v4Allow.response.ok ? countEntries(v4Allow.data) : 0,
+            allow6: v6Allow.response.ok ? countEntries(v6Allow.data) : 0,
           };
           setMetrics(next);
           setHistory((current) => [...current, next].slice(-24));
@@ -144,7 +129,7 @@ export function DashboardOverview() {
       }
     }
     void loadMetrics();
-    const interval = globalThis.setInterval(() => void loadMetrics(), 30_000);
+    const interval = globalThis.setInterval(() => void loadMetrics(), 2_000);
     return () => {
       active = false;
       globalThis.clearInterval(interval);
@@ -216,17 +201,25 @@ export function DashboardOverview() {
             tabIndex={0}
             onClick={() =>
               navigate(
-                index < 2
-                  ? "/dashboard/configuration"
-                  : "/dashboard/allow-lists",
+                index === 0
+                  ? "/dashboard/allow-lists?map=packets-v4"
+                  : index === 1
+                  ? "/dashboard/allow-lists?map=packets-v6"
+                  : index === 2
+                  ? "/dashboard/allow-lists?map=allow-v4"
+                  : "/dashboard/allow-lists?map=allow-v6",
               )}
             onKeyDown={(event) => {
               if (event.key === "Enter" || event.key === " ") {
                 event.preventDefault();
                 navigate(
-                  index < 2
-                    ? "/dashboard/configuration"
-                    : "/dashboard/allow-lists",
+                  index === 0
+                    ? "/dashboard/allow-lists?map=packets-v4"
+                    : index === 1
+                    ? "/dashboard/allow-lists?map=packets-v6"
+                    : index === 2
+                    ? "/dashboard/allow-lists?map=allow-v4"
+                    : "/dashboard/allow-lists?map=allow-v6",
                 );
               }
             }}
