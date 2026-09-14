@@ -87,7 +87,11 @@ impl EbpfProgramm {
         let mut ebpf = aya::Ebpf::load(aya::include_bytes_aligned!(concat!(
             env!("OUT_DIR"),
             "/oxidrop"
-        )))?;
+        )))
+        .context(
+            "Failed to load the eBPF object; run oxidrop with sudo or grant the binary \
+             CAP_BPF, CAP_NET_ADMIN, and CAP_PERFMON capabilities",
+        )?;
         match aya_log::EbpfLogger::init(&mut ebpf) {
             Err(e) => {
                 // This can happen if you remove all log statements from your eBPF program. warn!("failed to initialize eBPF logger: {e}");
