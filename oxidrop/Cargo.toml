@@ -7,7 +7,7 @@ license.workspace = true
 
 [dependencies]
 utoipa-axum = "0.2"
-utoipa = { version = "5.5.0", features = ["axum_extras"] }
+utoipa = { workspace = true }
 secrecy = { version = "0.10.3", features = ["serde"] }
 axum-login = "0.18.0"
 tower-sessions-redis-store = "0.16.0"
@@ -16,17 +16,16 @@ rust-embed = "8.12.0"
 tower = "0.5.3"
 oxidrop-common = { path = "../oxidrop-common", features = ["std"] }
 tower-sessions = "0.14.0"
-tower-http = { version = "0.7", features = ["fs","trace","catch-panic","timeout","limit","compression-gzip", "compression-br","cors"] }
+tower-http = { version = "0.7", features = ["trace","catch-panic","timeout","limit","compression-gzip", "compression-br","cors"] }
 clap = { version = "4.5.20", default-features = false, features = ["std","help","error-context","color","derive"] }
 axum = {version = "0.8.9", features = ["http2", "ws"]}
 hyper = "1.10.1"
-hyper-util = "0.1.20"
 tracing-subscriber = { version = "0.3.22", features = ["local-time"] }
 rustix = { version = "1.1.4", features = ["time","linux_latest","net"] }
 sqlx = { version = "0.9", features = [ "runtime-tokio","sqlite","derive","macros","migrate" ] }
 thiserror = "2.0.20"
 argon2 = "0.6"
-bitflags = "2.13.1"
+bitflags = { workspace = true }
 serde_json = "1.0.151"
 
 
@@ -34,7 +33,6 @@ serde = { workspace = true}
 anyhow = { workspace = true, default-features = true }
 aya = { workspace = true }
 aya-log = { workspace = true }
-libc = { workspace = true }
 tokio = { workspace = true, features = [
     "macros",
     "rt",
@@ -46,7 +44,6 @@ tracing = { workspace = true }
 
 [dev-dependencies]
 etherparse = "0.21.0"
-oxidrop-common = { path = "../oxidrop-common",features=["std"] }
 
 
 [build-dependencies]
