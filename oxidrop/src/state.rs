@@ -427,7 +427,10 @@ impl ConfigPatch {
 #[utoipa::path(
     get,
     path = "/api/v1/config",
-    responses((status = 200, description = "Get current firewall configuration")),
+    responses(
+        (status = 200, description = "Get current firewall configuration", body = FirewallConfig),
+        (status = 500, description = "CONFIG map not initialized")
+    ),
     security(("cookie_auth" = []))
 )]
 /// get config from the firewall
@@ -1543,6 +1546,9 @@ mod tests {
             patch.protocol_allowed,
             Some(ActivaterEtherTypes::IPV4 | ActivaterEtherTypes::IPV6),
         );
+
+        let default_config = serde_json::to_value(FirewallConfig::default()).unwrap();
+        assert_eq!(default_config["protocol_allowed"], 18);
     }
 
     async fn make_request(
