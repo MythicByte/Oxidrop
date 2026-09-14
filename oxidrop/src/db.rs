@@ -33,6 +33,7 @@ use sqlx::{
     prelude::FromRow,
     sqlite::{
         SqliteConnectOptions,
+        SqliteJournalMode,
         SqlitePoolOptions,
     },
 };
@@ -461,7 +462,10 @@ impl Database {
     /// Initializes the database connection and saves it to disk if it doesn't exist.
     pub async fn new(db_url: &str) -> Result<Self, sqlx::Error> {
         // create_if_missing(true) ensures the file is saved to disk upon creation
-        let options = SqliteConnectOptions::from_str(db_url)?.create_if_missing(true);
+        let options = SqliteConnectOptions::from_str(db_url)?
+            .create_if_missing(true)
+            .busy_timeout(std::time::Duration::from_secs(5))
+            .journal_mode(SqliteJournalMode::Wal);
 
         let pool = SqlitePoolOptions::new()
             .max_connections(100)
