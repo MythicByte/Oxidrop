@@ -30,10 +30,13 @@ import {
 import { client } from "./api.tsx";
 import type { components } from "../api/schema.d.ts";
 
-type Config = components["schemas"]["ConfigPatch"];
+type Config = Partial<components["schemas"]["FirewallConfig"]>;
+type ConfigPatch = components["schemas"]["ConfigPatch"];
 type AdapterResponse = components["schemas"]["AdaptersResponse"];
 type TrafficStats = components["schemas"]["TrafficStatsResponse"];
 type SubnetAction = components["schemas"]["Action"];
+
+const DEFAULT_PROTOCOL_MASK = (1 << 1) | (1 << 4);
 
 const PROTOCOL_OPTIONS = [
   {
@@ -161,7 +164,10 @@ function formatBytes(value: number): string {
 }
 
 export function FirewallConfiguration() {
-  const [config, setConfig] = useState<Config>({ ddos_activated: true });
+  const [config, setConfig] = useState<Config>({
+    ddos_activated: true,
+    protocol_allowed: DEFAULT_PROTOCOL_MASK,
+  });
   const [adapters, setAdapters] = useState<AdapterResponse>({
     available: [],
     enforcement_active: false,
@@ -229,8 +235,10 @@ export function FirewallConfiguration() {
         }
         if (configRes.response.ok && configRes.data) {
           setConfig({
-            ddos_activated: true,
             ...(configRes.data as unknown as Config),
+            ddos_activated: configRes.data.ddos_activated ?? true,
+            protocol_allowed: configRes.data.protocol_allowed ??
+              DEFAULT_PROTOCOL_MASK,
           });
         }
         if (adapterRes.response.ok && adapterRes.data) {
@@ -472,7 +480,7 @@ export function FirewallConfiguration() {
 
   const handleSave = async () => {
     try {
-      const payload = {
+      const payload: ConfigPatch = {
         ddos_activated: config.ddos_activated,
         subnet_activated: config.subnet_activated,
         protocol_allowed: config.protocol_allowed,
