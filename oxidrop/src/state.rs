@@ -333,6 +333,20 @@ where
     Ok(Some(Option::<T>::deserialize(deserializer)?))
 }
 
+fn deserialize_protocol_allowed<'de, D>(
+    deserializer: D,
+) -> Result<Option<ActivaterEtherTypes>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    Option::<u16>::deserialize(deserializer)?
+        .map(|bits| {
+            ActivaterEtherTypes::from_bits(bits)
+                .ok_or_else(|| serde::de::Error::custom(format!("unknown protocol mask: {bits}")))
+        })
+        .transpose()
+}
+
 // But we need a "patch-style" request type that allows partial updates
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct ConfigPatch {
@@ -347,7 +361,8 @@ pub struct ConfigPatch {
     pub default_profile: Option<RateProfile>,
     #[serde(default)]
     #[ schema(value_type = Option<u16>)]
-    pub protcol_allowed: Option<ActivaterEtherTypes>,
+    #[serde(deserialize_with = "deserialize_protocol_allowed")]
+    pub protocol_allowed: Option<ActivaterEtherTypes>,
     #[serde(default)]
     pub ddos_activated: Option<bool>,
     #[serde(default)]
@@ -391,7 +406,7 @@ impl ConfigPatch {
         if let Some(p) = self.default_profile {
             cfg.default_profile = p;
         }
-        if let Some(types) = self.protcol_allowed {
+        if let Some(types) = self.protocol_allowed {
             cfg.protocol_allowed = types;
         }
         if let Some(activated) = self.ddos_activated {
@@ -547,6 +562,8 @@ pub async fn update_config(
             return (StatusCode::BAD_REQUEST, msg).into_response();
         }
 
+        let adapters_changed =
+            patch.incoming_ethernet_adapter.is_some() || patch.output_ethernet_adapter.is_some();
         let mut config = state.config.write().await;
         let mut cfg = match config.get(&0, 0) {
             Ok(cfg) => cfg,
@@ -561,58 +578,60 @@ pub async fn update_config(
 
         patch.apply(&mut cfg);
 
-        if let Some(ebpf) = &state.ebpf {
-            let mut ebpf = ebpf.lock().await;
-            if let Err(error) = ebpf.reboot(&cfg, &state.opt) {
-                tracing::error!("failed to attach eBPF adapters: {error}");
-                cfg.incoming_ethernet_adapter = None;
-                cfg.output_ethernet_adapter = None;
-                if let Err(clear_error) = config.set(0, cfg, 0) {
-                    tracing::error!(
-                        "failed to clear adapters after eBPF attach failure: {clear_error}"
-                    );
+        if adapters_changed {
+            if let Some(ebpf) = &state.ebpf {
+                let mut ebpf = ebpf.lock().await;
+                if let Err(error) = ebpf.reboot(&cfg, &state.opt) {
+                    tracing::error!("failed to attach eBPF adapters: {error}");
+                    cfg.incoming_ethernet_adapter = None;
+                    cfg.output_ethernet_adapter = None;
+                    if let Err(clear_error) = config.set(0, cfg, 0) {
+                        tracing::error!(
+                            "failed to clear adapters after eBPF attach failure: {clear_error}"
+                        );
+                    }
+                    if let Err(clear_error) = state.db.save_firewall_config(&cfg).await {
+                        tracing::error!(
+                            "failed to persist cleared adapters after eBPF attach failure: {clear_error}"
+                        );
+                    }
+                    state
+                        .logs
+                        .record(
+                            "ERROR",
+                            &format!("Failed to attach eBPF adapters: {error}"),
+                            Some(&user.username),
+                        )
+                        .await;
+                    return (
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        "Failed to attach eBPF program to the selected adapters",
+                    )
+                        .into_response();
                 }
-                if let Err(clear_error) = state.db.save_firewall_config(&cfg).await {
-                    tracing::error!(
-                        "failed to persist cleared adapters after eBPF attach failure: {clear_error}"
-                    );
-                }
+                let (incoming, output) = ebpf.attached_adapters();
+                let attached = [incoming, output]
+                    .into_iter()
+                    .flatten()
+                    .map(|index| index.to_string())
+                    .collect::<Vec<_>>()
+                    .join(", ");
                 state
                     .logs
                     .record(
-                        "ERROR",
-                        &format!("Failed to attach eBPF adapters: {error}"),
+                        "INFO",
+                        &format!(
+                            "eBPF interface attachment succeeded{}",
+                            if attached.is_empty() {
+                                String::new()
+                            } else {
+                                format!(": {attached}")
+                            }
+                        ),
                         Some(&user.username),
                     )
                     .await;
-                return (
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    "Failed to attach eBPF program to the selected adapters",
-                )
-                    .into_response();
             }
-            let (incoming, output) = ebpf.attached_adapters();
-            let attached = [incoming, output]
-                .into_iter()
-                .flatten()
-                .map(|index| index.to_string())
-                .collect::<Vec<_>>()
-                .join(", ");
-            state
-                .logs
-                .record(
-                    "INFO",
-                    &format!(
-                        "eBPF interface attachment succeeded{}",
-                        if attached.is_empty() {
-                            String::new()
-                        } else {
-                            format!(": {attached}")
-                        }
-                    ),
-                    Some(&user.username),
-                )
-                .await;
         }
 
         if config.set(0, cfg, 0).is_err() {
@@ -1518,6 +1537,12 @@ mod tests {
         let patch: ConfigPatch = serde_json::from_str("{}").unwrap();
         assert_eq!(patch.incoming_ethernet_adapter, None);
         assert_eq!(patch.output_ethernet_adapter, None);
+
+        let patch: ConfigPatch = serde_json::from_str(r#"{"protocol_allowed": 18}"#).unwrap();
+        assert_eq!(
+            patch.protocol_allowed,
+            Some(ActivaterEtherTypes::IPV4 | ActivaterEtherTypes::IPV6),
+        );
     }
 
     async fn make_request(
