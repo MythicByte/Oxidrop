@@ -18,6 +18,7 @@ import { Switch } from "./ui/switch.tsx";
 import { Label } from "./ui/label.tsx";
 import { Input } from "./ui/input.tsx";
 import {
+  Check,
   Network,
   Plus,
   Power,
@@ -33,6 +34,45 @@ type Config = components["schemas"]["ConfigPatch"];
 type AdapterResponse = components["schemas"]["AdaptersResponse"];
 type TrafficStats = components["schemas"]["TrafficStatsResponse"];
 type SubnetAction = components["schemas"]["Action"];
+
+const PROTOCOL_OPTIONS = [
+  {
+    bit: 1 << 0,
+    label: "Loopback",
+    description: "Local host traffic",
+    shortLabel: "LOOP",
+  },
+  {
+    bit: 1 << 1,
+    label: "IPv4",
+    description: "Internet Protocol v4",
+    shortLabel: "IPv4",
+  },
+  {
+    bit: 1 << 2,
+    label: "ARP",
+    description: "Address resolution",
+    shortLabel: "ARP",
+  },
+  {
+    bit: 1 << 3,
+    label: "802.1Q",
+    description: "VLAN-tagged traffic",
+    shortLabel: "VLAN",
+  },
+  {
+    bit: 1 << 4,
+    label: "IPv6",
+    description: "Internet Protocol v6",
+    shortLabel: "IPv6",
+  },
+  {
+    bit: 1 << 5,
+    label: "802.1AD",
+    description: "Q-in-Q VLAN traffic",
+    shortLabel: "QinQ",
+  },
+] as const;
 
 interface SubnetV4Rule {
   network: number;
@@ -140,6 +180,9 @@ export function FirewallConfiguration() {
     { kind: "success" | "error"; message: string } | null
   >(null);
   const [noticeFading, setNoticeFading] = useState(false);
+  const [protocolUpdate, setProtocolUpdate] = useState<
+    "idle" | "saving" | "success" | "error"
+  >("idle");
   const [confirmAction, setConfirmAction] = useState<
     "shutdown" | "restart" | null
   >(null);
@@ -346,16 +389,18 @@ export function FirewallConfiguration() {
     const previous = config[field];
     setConfig((current) => ({ ...current, [field]: enabled }));
     try {
-      const { response, data } = await client.POST("/api/v1/config", {
+      const { response } = await client.POST("/api/v1/config", {
         body: { [field]: enabled },
       });
-      if (!response.ok || !data) {
+      if (!response.ok) {
+        const message = await response.text();
         setConfig((current) => ({ ...current, [field]: previous }));
         setAttachmentNotice({
           kind: "error",
-          message: `Failed to ${enabled ? "enable" : "disable"} ${
-            field === "ddos_activated" ? "DDoS protection" : "subnet matching"
-          }.`,
+          message: message ||
+            `Failed to ${enabled ? "enable" : "disable"} ${
+              field === "ddos_activated" ? "DDoS protection" : "subnet matching"
+            }.`,
         });
         return;
       }
@@ -376,11 +421,61 @@ export function FirewallConfiguration() {
     }
   };
 
+  const updateProtocols = async (protocolAllowed: number) => {
+    const previous = config.protocol_allowed ?? 0;
+    setProtocolUpdate("saving");
+    setConfig((current) => ({
+      ...current,
+      protocol_allowed: protocolAllowed,
+    }));
+    try {
+      const { response } = await client.POST("/api/v1/config", {
+        body: { protocol_allowed: protocolAllowed },
+      });
+      if (!response.ok) {
+        const message = await response.text();
+        setConfig((current) => ({
+          ...current,
+          protocol_allowed: previous,
+        }));
+        setProtocolUpdate("error");
+        setAttachmentNotice({
+          kind: "error",
+          message: message ||
+            "The allowed protocol policy could not be updated.",
+        });
+        return;
+      }
+      setProtocolUpdate("success");
+      setAttachmentNotice({
+        kind: "success",
+        message: "Allowed protocols updated successfully.",
+      });
+    } catch (error) {
+      console.error("Failed to update allowed protocols:", error);
+      setConfig((current) => ({
+        ...current,
+        protocol_allowed: previous,
+      }));
+      setProtocolUpdate("error");
+      setAttachmentNotice({
+        kind: "error",
+        message: "The allowed protocol policy could not be updated.",
+      });
+    }
+  };
+
+  const toggleProtocol = (bit: number, enabled: boolean) => {
+    const current = config.protocol_allowed ?? 0;
+    void updateProtocols(enabled ? current | bit : current & ~bit);
+  };
+
   const handleSave = async () => {
     try {
       const payload = {
         ddos_activated: config.ddos_activated,
         subnet_activated: config.subnet_activated,
+        protocol_allowed: config.protocol_allowed,
         incoming_ethernet_adapter: config.incoming_ethernet_adapter,
         output_ethernet_adapter: config.output_ethernet_adapter,
       };
@@ -389,13 +484,17 @@ export function FirewallConfiguration() {
         body: payload,
       });
       if (response.ok) {
-        const adapterResponse = await client.GET("/api/v1/config/adapters");
-        if (adapterResponse.response.ok && adapterResponse.data) {
-          setAdapters(adapterResponse.data);
+        try {
+          const adapterResponse = await client.GET("/api/v1/config/adapters");
+          if (adapterResponse.response.ok && adapterResponse.data) {
+            setAdapters(adapterResponse.data);
+          }
+        } catch (error) {
+          console.error("Failed to refresh adapter state:", error);
         }
         setAttachmentNotice({
           kind: "success",
-          message: "eBPF interface attachment succeeded.",
+          message: "Configuration applied successfully.",
         });
       } else {
         const message = await response.text();
@@ -404,9 +503,13 @@ export function FirewallConfiguration() {
           incoming_ethernet_adapter: null,
           output_ethernet_adapter: null,
         }));
-        const adapterResponse = await client.GET("/api/v1/config/adapters");
-        if (adapterResponse.response.ok && adapterResponse.data) {
-          setAdapters(adapterResponse.data);
+        try {
+          const adapterResponse = await client.GET("/api/v1/config/adapters");
+          if (adapterResponse.response.ok && adapterResponse.data) {
+            setAdapters(adapterResponse.data);
+          }
+        } catch (error) {
+          console.error("Failed to refresh adapter state:", error);
         }
         setAttachmentNotice({
           kind: "error",
@@ -517,9 +620,9 @@ export function FirewallConfiguration() {
         )}
       </div>
 
-      <div className="grid gap-6 md:grid-cols-2">
+      <div className="grid w-full min-w-0 grid-cols-1 gap-6 2xl:grid-cols-2">
         {/* Hardware Adapters Card */}
-        <Card>
+        <Card className="w-full min-w-0">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Network className="h-5 w-5" /> Network Adapters
@@ -785,6 +888,145 @@ export function FirewallConfiguration() {
                 <RotateCw className="size-4" /> Restart eBPF
               </Button>
             </div>
+            {hasModify && (
+              <div className="flex justify-end border-t pt-4">
+                <Button type="button" onClick={() => void handleSave()}>
+                  Apply Configuration
+                </Button>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card className="w-full min-w-0">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <ShieldAlert className="h-5 w-5" /> Allowed protocols
+            </CardTitle>
+            <CardDescription>
+              Choose which Ethernet traffic the firewall processes. Disabled
+              protocol types are rejected before higher-level rules run.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border bg-muted/30 p-3">
+              <div>
+                <p className="font-medium">
+                  {PROTOCOL_OPTIONS.filter(({ bit }) =>
+                    (config.protocol_allowed ?? 0) & bit
+                  ).length} of {PROTOCOL_OPTIONS.length} protocols enabled
+                </p>
+                <p className="text-sm text-muted-foreground">
+                  Changes apply immediately to the eBPF policy.
+                </p>
+              </div>
+              <div className="flex gap-2">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  disabled={!hasModify || protocolUpdate === "saving" ||
+                    (config.protocol_allowed ?? 0) ===
+                      PROTOCOL_OPTIONS.reduce((mask, { bit }) => mask | bit, 0)}
+                  onClick={() =>
+                    void updateProtocols(
+                      PROTOCOL_OPTIONS.reduce((mask, { bit }) => mask | bit, 0),
+                    )}
+                >
+                  Enable all
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="ghost"
+                  disabled={!hasModify || protocolUpdate === "saving" ||
+                    (config.protocol_allowed ?? 0) === 0}
+                  onClick={() => void updateProtocols(0)}
+                >
+                  Clear
+                </Button>
+              </div>
+            </div>
+            {protocolUpdate !== "idle" && (
+              <p
+                className={`text-sm font-medium ${
+                  protocolUpdate === "error"
+                    ? "text-destructive"
+                    : protocolUpdate === "success"
+                    ? "text-emerald-600"
+                    : "text-muted-foreground"
+                }`}
+                role={protocolUpdate === "error" ? "alert" : undefined}
+              >
+                {protocolUpdate === "saving"
+                  ? "Applying protocol policy..."
+                  : protocolUpdate === "success"
+                  ? "Protocol policy applied successfully."
+                  : "The protocol policy could not be applied."}
+              </p>
+            )}
+            <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+              {PROTOCOL_OPTIONS.map(
+                ({ bit, label, description, shortLabel }) => {
+                  const enabled = Boolean((config.protocol_allowed ?? 0) & bit);
+                  return (
+                    <div
+                      key={label}
+                      role="button"
+                      tabIndex={hasModify ? 0 : -1}
+                      aria-pressed={enabled}
+                      onClick={() => {
+                        if (hasModify && protocolUpdate !== "saving") {
+                          toggleProtocol(bit, !enabled);
+                        }
+                      }}
+                      onKeyDown={(event) => {
+                        if (
+                          hasModify &&
+                          protocolUpdate !== "saving" &&
+                          (event.key === "Enter" || event.key === " ")
+                        ) {
+                          event.preventDefault();
+                          toggleProtocol(bit, !enabled);
+                        }
+                      }}
+                      className={`group flex items-center justify-between gap-3 rounded-lg border p-3 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
+                        enabled
+                          ? "border-primary/40 bg-primary/5"
+                          : "bg-background hover:bg-muted/40"
+                      }`}
+                    >
+                      <div className="flex min-w-0 items-center gap-3">
+                        <span
+                          className={`flex size-9 shrink-0 items-center justify-center rounded-md text-xs font-bold ${
+                            enabled
+                              ? "bg-primary text-primary-foreground"
+                              : "bg-muted text-muted-foreground"
+                          }`}
+                        >
+                          {enabled ? <Check className="size-4" /> : shortLabel}
+                        </span>
+                        <div className="min-w-0">
+                          <Label className="text-sm font-medium">{label}</Label>
+                          <p className="truncate text-xs text-muted-foreground">
+                            {description}
+                          </p>
+                        </div>
+                      </div>
+                      <Switch
+                        size="sm"
+                        disabled={!hasModify || protocolUpdate === "saving"}
+                        checked={enabled}
+                        aria-label={`Allow ${label}`}
+                        onClick={(event) => event.stopPropagation()}
+                        onCheckedChange={(checked) =>
+                          toggleProtocol(bit, checked)}
+                      />
+                    </div>
+                  );
+                },
+              )}
+            </div>
           </CardContent>
         </Card>
 
@@ -959,11 +1201,6 @@ export function FirewallConfiguration() {
         </Card>
       </div>
 
-      {hasModify && (
-        <Button onClick={handleSave} className="w-full md:w-auto">
-          Commit Configuration
-        </Button>
-      )}
       {confirmAction && (
         <div
           className="fixed inset-0 z-50 grid place-items-center bg-slate-950/45 p-4 backdrop-blur-sm"
