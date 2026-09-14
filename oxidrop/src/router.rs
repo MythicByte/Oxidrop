@@ -57,11 +57,15 @@ use crate::{
         UserRow,
     },
     state::{
+        AllowListV4Entry,
         AllowListV4Update,
+        AllowListV6Entry,
         AllowListV6Update,
         ConfigPatch,
         FirewallState,
+        PacketCountV4Entry,
         PacketCountV4Update,
+        PacketCountV6Entry,
         PacketCountV6Update,
         SubnetMatchV4Update,
         SubnetMatchV6Update,
@@ -169,7 +173,11 @@ async fn frontend_fallback(request: Request) -> Response {
         FirewallConfig,
         UserRow,
         TrafficCounters,
-        TrafficStatsResponse
+        TrafficStatsResponse,
+        AllowListV4Entry,
+        AllowListV6Entry,
+        PacketCountV4Entry,
+        PacketCountV6Entry
     ))
 )]
 pub struct ApiDoc;
