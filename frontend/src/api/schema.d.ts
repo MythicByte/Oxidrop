@@ -341,9 +341,21 @@ export interface components {
       /** Format: int64 */
       last_seen: number;
     };
+    AllowListV4Entry: {
+      key: components["schemas"]["Ipv4Packet"];
+      /** Format: int64 */
+      last_seen_at?: number | null;
+      value: components["schemas"]["AllowListState"];
+    };
     AllowListV4Update: {
       key: components["schemas"]["Ipv4Packet"];
       state: components["schemas"]["AllowListState"];
+    };
+    AllowListV6Entry: {
+      key: components["schemas"]["Ipv6Packet"];
+      /** Format: int64 */
+      last_seen_at?: number | null;
+      value: components["schemas"]["AllowListState"];
     };
     AllowListV6Update: {
       key: components["schemas"]["Ipv6Packet"];
@@ -469,9 +481,21 @@ export interface components {
       role: components["schemas"]["RolesUser"];
       target_username: string;
     };
+    PacketCountV4Entry: {
+      key: components["schemas"]["Ipv4Packet"];
+      /** Format: int64 */
+      last_update_at?: number | null;
+      value: components["schemas"]["TokenBucketState"];
+    };
     PacketCountV4Update: {
       key: components["schemas"]["Ipv4Packet"];
       state: components["schemas"]["TokenBucketState"];
+    };
+    PacketCountV6Entry: {
+      key: components["schemas"]["Ipv6Packet"];
+      /** Format: int64 */
+      last_update_at?: number | null;
+      value: components["schemas"]["TokenBucketState"];
     };
     PacketCountV6Update: {
       key: components["schemas"]["Ipv6Packet"];
@@ -662,7 +686,9 @@ export interface operations {
         headers: {
           [name: string]: unknown;
         };
-        content?: never;
+        content: {
+          "application/json": components["schemas"]["AllowListV4Entry"][];
+        };
       };
     };
   };
@@ -702,7 +728,11 @@ export interface operations {
       path?: never;
       cookie?: never;
     };
-    requestBody?: never;
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["Ipv4Packet"];
+      };
+    };
     responses: {
       /** @description All entries cleared */
       200: {
@@ -734,7 +764,9 @@ export interface operations {
         headers: {
           [name: string]: unknown;
         };
-        content?: never;
+        content: {
+          "application/json": components["schemas"]["AllowListV6Entry"][];
+        };
       };
     };
   };
@@ -774,7 +806,11 @@ export interface operations {
       path?: never;
       cookie?: never;
     };
-    requestBody?: never;
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["Ipv6Packet"];
+      };
+    };
     responses: {
       /** @description All entries cleared */
       200: {
@@ -806,7 +842,9 @@ export interface operations {
         headers: {
           [name: string]: unknown;
         };
-        content?: never;
+        content: {
+          "application/json": components["schemas"]["PacketCountV4Entry"][];
+        };
       };
     };
   };
@@ -846,7 +884,11 @@ export interface operations {
       path?: never;
       cookie?: never;
     };
-    requestBody?: never;
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["Ipv4Packet"];
+      };
+    };
     responses: {
       /** @description Cleared IPv4 packet counts */
       200: {
@@ -878,7 +920,9 @@ export interface operations {
         headers: {
           [name: string]: unknown;
         };
-        content?: never;
+        content: {
+          "application/json": components["schemas"]["PacketCountV6Entry"][];
+        };
       };
     };
   };
@@ -918,7 +962,11 @@ export interface operations {
       path?: never;
       cookie?: never;
     };
-    requestBody?: never;
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["Ipv6Packet"];
+      };
+    };
     responses: {
       /** @description Cleared IPv6 packet counts */
       200: {

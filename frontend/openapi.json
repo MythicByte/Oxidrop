@@ -115,7 +115,17 @@
         "operationId": "get_allow_list_v4",
         "responses": {
           "200": {
-            "description": "Get all items in the IPv4 Allow List"
+            "description": "Get all items in the IPv4 Allow List",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/AllowListV4Entry"
+                  }
+                }
+              }
+            }
           }
         },
         "security": [
@@ -160,6 +170,16 @@
         ],
         "summary": "DELETE: Clear all entries in the list",
         "operationId": "clear_allow_list_v4",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Ipv4Packet"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
             "description": "All entries cleared"
@@ -184,7 +204,17 @@
         "operationId": "get_allow_list_v6",
         "responses": {
           "200": {
-            "description": "Get all items in the IPv6 Allow List"
+            "description": "Get all items in the IPv6 Allow List",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/AllowListV6Entry"
+                  }
+                }
+              }
+            }
           }
         },
         "security": [
@@ -229,6 +259,16 @@
         ],
         "summary": "DELETE: Clear all entries in the list",
         "operationId": "clear_allow_list_v6",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Ipv6Packet"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
             "description": "All entries cleared"
@@ -252,7 +292,17 @@
         "operationId": "get_packet_counts_v4",
         "responses": {
           "200": {
-            "description": "Get IPv4 packet counts"
+            "description": "Get IPv4 packet counts",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/PacketCountV4Entry"
+                  }
+                }
+              }
+            }
           }
         },
         "security": [
@@ -295,6 +345,16 @@
           "crate::state"
         ],
         "operationId": "clear_packet_counts_v4",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Ipv4Packet"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
             "description": "Cleared IPv4 packet counts"
@@ -318,7 +378,17 @@
         "operationId": "get_packet_counts_v6",
         "responses": {
           "200": {
-            "description": "Get IPv6 packet counts"
+            "description": "Get IPv6 packet counts",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/PacketCountV6Entry"
+                  }
+                }
+              }
+            }
           }
         },
         "security": [
@@ -361,6 +431,16 @@
           "crate::state"
         ],
         "operationId": "clear_packet_counts_v6",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Ipv6Packet"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
             "description": "Cleared IPv6 packet counts"
@@ -963,6 +1043,28 @@
           }
         }
       },
+      "AllowListV4Entry": {
+        "type": "object",
+        "required": [
+          "key",
+          "value"
+        ],
+        "properties": {
+          "key": {
+            "$ref": "#/components/schemas/Ipv4Packet"
+          },
+          "last_seen_at": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          },
+          "value": {
+            "$ref": "#/components/schemas/AllowListState"
+          }
+        }
+      },
       "AllowListV4Update": {
         "type": "object",
         "required": [
@@ -974,6 +1076,28 @@
             "$ref": "#/components/schemas/Ipv4Packet"
           },
           "state": {
+            "$ref": "#/components/schemas/AllowListState"
+          }
+        }
+      },
+      "AllowListV6Entry": {
+        "type": "object",
+        "required": [
+          "key",
+          "value"
+        ],
+        "properties": {
+          "key": {
+            "$ref": "#/components/schemas/Ipv6Packet"
+          },
+          "last_seen_at": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          },
+          "value": {
             "$ref": "#/components/schemas/AllowListState"
           }
         }
@@ -1417,6 +1541,28 @@
           }
         }
       },
+      "PacketCountV4Entry": {
+        "type": "object",
+        "required": [
+          "key",
+          "value"
+        ],
+        "properties": {
+          "key": {
+            "$ref": "#/components/schemas/Ipv4Packet"
+          },
+          "last_update_at": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          },
+          "value": {
+            "$ref": "#/components/schemas/TokenBucketState"
+          }
+        }
+      },
       "PacketCountV4Update": {
         "type": "object",
         "required": [
@@ -1428,6 +1574,28 @@
             "$ref": "#/components/schemas/Ipv4Packet"
           },
           "state": {
+            "$ref": "#/components/schemas/TokenBucketState"
+          }
+        }
+      },
+      "PacketCountV6Entry": {
+        "type": "object",
+        "required": [
+          "key",
+          "value"
+        ],
+        "properties": {
+          "key": {
+            "$ref": "#/components/schemas/Ipv6Packet"
+          },
+          "last_update_at": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          },
+          "value": {
             "$ref": "#/components/schemas/TokenBucketState"
           }
         }
