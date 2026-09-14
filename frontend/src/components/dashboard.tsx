@@ -204,10 +204,7 @@ export function Dashboard({ onLogout }: DashboardProps) {
       </header>
 
       <div className="flex w-full">
-        <aside className="sticky top-16 hidden h-[calc(100vh-4rem)] w-60 shrink-0 flex-col border-r bg-background/70 px-3 py-6 md:flex">
-          <p className="px-3 pb-3 text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">
-            Control plane
-          </p>
+        <aside className="fixed inset-y-0 left-0 top-16 z-20 hidden w-60 flex-col border-r bg-background/95 px-3 py-6 backdrop-blur md:flex">
           <nav className="space-y-1">
             {visibleNavigation.map(({ label, to, icon: Icon, end }) => (
               <NavLink
@@ -332,7 +329,7 @@ export function Dashboard({ onLogout }: DashboardProps) {
           </div>
         )}
 
-        <main className="min-w-0 flex-1">
+        <main className="min-w-0 flex-1 md:ml-60">
           <Outlet />
         </main>
       </div>
