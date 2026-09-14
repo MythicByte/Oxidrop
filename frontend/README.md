@@ -45,6 +45,20 @@ cargo run -p oxidrop
 
 Then run the frontend from `frontend/`.
 
+### Development CORS
+
+The backend uses a restrictive production CORS origin based on its configured
+HTTP port, for example `http://127.0.0.1:3000`. The Vite development server
+started by `deno task dev` runs on `http://127.0.0.1:5173`, so development
+requests require the allowed origin in
+[`oxidrop/src/main.rs`](../oxidrop/src/main.rs) to be changed to port `5173`.
+The equivalent `localhost` origin may also be used if the browser is opened
+through `http://localhost:5173`.
+
+After changing the Rust CORS configuration, restart or freshly compile the
+backend before testing. Restore the production origin and rebuild the backend
+before deploying.
+
 ## Deno commands
 
 Install or refresh dependencies from `package.json` and `deno.lock`:

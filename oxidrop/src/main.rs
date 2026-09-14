@@ -84,6 +84,14 @@ async fn main() -> anyhow::Result<()> {
     db.bootstrap_default_admin()
         .await
         .context("Failed to bootstrap the default admin user")?;
+    let cors_origin = axum::http::HeaderValue::try_from(format!("http://127.0.0.1:{http_port}"))
+        .unwrap_or_else(|error| {
+            tracing::warn!(
+                %error,
+                "Failed to configure CORS for port {http_port}; falling back to port 3000"
+            );
+            axum::http::HeaderValue::from_static("http://127.0.0.1:3000")
+        });
     for (network, prefix_len, action) in db.list_subnet_v4().await? {
         subnet_matching_v4
             .insert(&Key::new(prefix_len, network.to_be_bytes()), action, 0)
@@ -178,25 +186,15 @@ async fn main() -> anyhow::Result<()> {
                 .layer(CompressionLayer::new())
                 .layer(
                     CorsLayer::new()
-                        // Explicitly list your frontend development origins
-                        .allow_origin([
-                            "http://127.0.0.1:5173"
-                                .parse::<axum::http::HeaderValue>()
-                                .unwrap(),
-                            "http://localhost:5173"
-                                .parse::<axum::http::HeaderValue>()
-                                .unwrap(),
-                        ])
+                        .allow_origin(cors_origin)
                         .allow_methods([
                             axum::http::Method::GET,
                             axum::http::Method::POST,
                             axum::http::Method::PUT,
                             axum::http::Method::DELETE,
-                            axum::http::Method::OPTIONS,
                         ])
                         .allow_headers([
                             axum::http::header::CONTENT_TYPE,
-                            axum::http::header::AUTHORIZATION,
                             axum::http::header::ACCEPT,
                         ])
                         .allow_credentials(true)
