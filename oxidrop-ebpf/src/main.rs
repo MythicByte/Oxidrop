@@ -87,19 +87,19 @@ static CONFIG: Array<FirewallConfig> = Array::with_max_entries(1, 0);
 /// Allowed flows keyed by source/destination addresses and ports.
 #[map]
 static ALLOW_LIST_V4: LruHashMap<Ipv4Packet, AllowListState> =
-    LruHashMap::with_max_entries(4096, 0);
+    LruHashMap::with_max_entries(1000000, 0);
 
 #[map]
 static ALLOW_LIST_V6: LruHashMap<Ipv6Packet, AllowListState> =
-    LruHashMap::with_max_entries(4096, 0);
+    LruHashMap::with_max_entries(1000000, 0);
 /// Token buckets for IPv4 flows.
 #[map]
 static PACKET_COUNTS_V4: LruHashMap<Ipv4Packet, TokenBucketState> =
-    LruHashMap::with_max_entries(4096, 0);
+    LruHashMap::with_max_entries(1000000, 0);
 /// Token buckets for IPv6 flows.
 #[map]
 static PACKET_COUNTS_V6: LruHashMap<Ipv6Packet, TokenBucketState> =
-    LruHashMap::with_max_entries(4096, 0);
+    LruHashMap::with_max_entries(1000000, 0);
 
 /// IPv4 subnet matching keyed by four network-order address bytes.
 #[map]
