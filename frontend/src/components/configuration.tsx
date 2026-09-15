@@ -29,6 +29,7 @@ import {
 } from "lucide-react";
 import { client } from "./api.tsx";
 import type { components } from "../api/schema.d.ts";
+import { displayAdapterName } from "../lib/utils.ts";
 
 type Config = Partial<components["schemas"]["FirewallConfig"]>;
 type ConfigPatch = components["schemas"]["ConfigPatch"];
@@ -655,7 +656,8 @@ export function FirewallConfiguration() {
                   {selectedIncoming
                     ? (
                       <span>
-                        {selectedIncoming.index} {selectedIncoming.name}
+                        {selectedIncoming.index}{" "}
+                        {displayAdapterName(selectedIncoming.name)}
                       </span>
                     )
                     : <SelectValue placeholder="Select incoming adapter" />}
@@ -667,7 +669,7 @@ export function FirewallConfiguration() {
                       key={adapter.index}
                       value={adapter.index.toString()}
                     >
-                      {adapter.index} {adapter.name}
+                      {adapter.index} {displayAdapterName(adapter.name)}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -689,7 +691,8 @@ export function FirewallConfiguration() {
                   {selectedOutgoing
                     ? (
                       <span>
-                        {selectedOutgoing.index} {selectedOutgoing.name}
+                        {selectedOutgoing.index}{" "}
+                        {displayAdapterName(selectedOutgoing.name)}
                       </span>
                     )
                     : <SelectValue placeholder="Select outgoing adapter" />}
@@ -701,7 +704,7 @@ export function FirewallConfiguration() {
                       key={adapter.index}
                       value={adapter.index.toString()}
                     >
-                      {adapter.index} {adapter.name}
+                      {adapter.index} {displayAdapterName(adapter.name)}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -781,7 +784,9 @@ export function FirewallConfiguration() {
                     fontWeight="600"
                     className="fill-foreground"
                   >
-                    {adapters.incoming?.name ?? "Incoming"}
+                    {adapters.incoming
+                      ? displayAdapterName(adapters.incoming.name)
+                      : "Incoming"}
                   </text>
                   <text
                     x="100"
@@ -838,7 +843,9 @@ export function FirewallConfiguration() {
                     fontWeight="600"
                     className="fill-foreground"
                   >
-                    {adapters.output?.name ?? "Outgoing"}
+                    {adapters.output
+                      ? displayAdapterName(adapters.output.name)
+                      : "Outgoing"}
                   </text>
                   <text
                     x="660"

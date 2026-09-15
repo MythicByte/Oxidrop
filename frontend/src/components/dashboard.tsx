@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import { Button } from "./ui/button.tsx";
 import { client } from "./api.tsx";
+import { displayAdapterName } from "../lib/utils.ts";
 
 const navigation = [
   { label: "Overview", to: "/dashboard", icon: LayoutDashboard, end: true },
@@ -257,7 +258,7 @@ export function Dashboard({ onLogout }: DashboardProps) {
                           className="flex items-center justify-between text-xs"
                         >
                           <span className="truncate font-medium">
-                            {adapter.index} — {adapter.name}
+                            {adapter.index} — {displayAdapterName(adapter.name)}
                           </span>
                           <span
                             className={attached
