@@ -121,7 +121,7 @@ pub fn oxidrop(ctx: XdpContext) -> u32 {
         }
         Err(FirewallError::RateLimited) => xdp_action::XDP_DROP,
         Err(FirewallError::DeniedByPolicy) => xdp_action::XDP_DROP,
-        Err(FirewallError::UnsupportedProtocol) => xdp_action::XDP_PASS,
+        Err(FirewallError::UnsupportedProtocol) => xdp_action::XDP_DROP,
     }
 }
 /// checks pointer length
@@ -510,6 +510,7 @@ fn xdp_firewall(ctx: XdpContext) -> Result<u32, FirewallError> {
                 direction,
             )
         }
+        Ok(EtherType::Arp) => Ok(xdp_action::XDP_PASS),
         // check if other typ is allowed and get through
         Ok(x) if config.protocol_allowed.contains(x.into()) => Ok(xdp_action::XDP_PASS),
         #[allow(clippy::wildcard_enum_match_arm)]
