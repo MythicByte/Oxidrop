@@ -6,6 +6,7 @@ edition.workspace = true
 license.workspace = true
 
 [dependencies]
+rcgen = "0.14.10"
 utoipa-axum = "0.2"
 utoipa = { workspace = true }
 secrecy = { version = "0.10.3", features = ["serde"] }
@@ -19,6 +20,7 @@ tower-sessions = "0.14.0"
 tower-http = { version = "0.7", features = ["trace","catch-panic","timeout","limit","compression-gzip", "compression-br","cors"] }
 clap = { version = "4.5.20", default-features = false, features = ["std","help","error-context","color","derive"] }
 axum = {version = "0.8.9", features = ["http2", "ws"]}
+axum-server = {version = "0.8.0", features = ["tls-rustls"]}
 hyper = "1.10.1"
 tracing-subscriber = { version = "0.3.22", features = ["local-time"] }
 rustix = { version = "1.1.4", features = ["time","linux_latest","net"] }

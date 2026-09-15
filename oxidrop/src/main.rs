@@ -6,6 +6,7 @@ use std::{
 
 use anyhow::Context;
 use axum_login::AuthManagerLayerBuilder;
+use axum_server::tls_rustls::RustlsConfig;
 use aya::maps::lpm_trie::Key;
 use clap::Parser;
 use hyper::StatusCode;
@@ -22,6 +23,7 @@ use oxidrop::{
     },
 };
 use oxidrop_common::ipv6_network_bytes;
+use rcgen::CertifiedKey;
 use rustix::time::{
     ClockId,
     clock_gettime,
@@ -84,13 +86,13 @@ async fn main() -> anyhow::Result<()> {
     db.bootstrap_default_admin()
         .await
         .context("Failed to bootstrap the default admin user")?;
-    let cors_origin = axum::http::HeaderValue::try_from(format!("http://127.0.0.1:{http_port}"))
+    let cors_origin = axum::http::HeaderValue::try_from(format!("https://127.0.0.1:{http_port}"))
         .unwrap_or_else(|error| {
             tracing::warn!(
                 %error,
                 "Failed to configure CORS for port {http_port}; falling back to port 3000"
             );
-            axum::http::HeaderValue::from_static("http://127.0.0.1:3000")
+            axum::http::HeaderValue::from_static("https://127.0.0.1:3000")
         });
     for (network, prefix_len, action) in db.list_subnet_v4().await? {
         subnet_matching_v4
@@ -203,9 +205,9 @@ async fn main() -> anyhow::Result<()> {
         )
         .layer(auth_layer);
     let addr = format!("127.0.0.1:{}", http_port);
-    let listener = tokio::net::TcpListener::bind(&addr)
-        .await
-        .context("Listener for axum failed to setup")?;
+    let addr: SocketAddr = addr
+        .parse()
+        .context("Listener address for axum failed to parse")?;
     info!("Server running on port {http_port}");
     logs.record(
         "INFO",
@@ -213,20 +215,30 @@ async fn main() -> anyhow::Result<()> {
         Some("system"),
     )
     .await;
+    let subject_alt_names = vec!["127.0.0.1".to_string(), "localhost".to_string()];
+    let CertifiedKey { cert, signing_key } = rcgen::generate_simple_self_signed(subject_alt_names)
+        .context("Failed to generate a dynamic self-signed certificate")?;
 
-    axum::serve(
-        listener,
-        app.into_make_service_with_connect_info::<SocketAddr>(),
+    let config = RustlsConfig::from_pem(
+        cert.pem().into_bytes(),
+        signing_key.serialize_pem().into_bytes(),
     )
-    .with_graceful_shutdown(async {
+    .await
+    .context("Failed to load dynamically generated TLS certificate")?;
+    let handle = axum_server::Handle::new();
+    let shutdown_handle = handle.clone();
+    tokio::spawn(async move {
         if let Err(err) = tokio::signal::ctrl_c().await {
             error!("Failed to listen for shutdown signal: {err}");
         }
         info!("Shutdown signal received, shutting down gracefully...");
-    })
-    .await
-    .context("Axum serving failed")?;
-
+        shutdown_handle.graceful_shutdown(None);
+    });
+    axum_server::bind_rustls(addr, config)
+        .handle(handle)
+        .serve(app.into_make_service_with_connect_info::<SocketAddr>())
+        .await
+        .context("Axum serving failed")?;
     Ok(())
 }
 fn get_bpf_ktime_ns() -> u64 {

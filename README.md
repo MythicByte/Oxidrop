@@ -61,8 +61,8 @@ Password: password
 ```
 
 The administrator must change this password immediately after the first
-login. If all users are deleted, Oxidrop automatically recreates this after a restart
-default administrator account and requires its password to be changed again.
+login. If all users are deleted, Oxidrop automatically recreates this default
+administrator account and requires its password to be changed again.
 
 ## Build and run
 
@@ -71,6 +71,16 @@ Run the installed backend with:
 ```shell
 sudo oxidrop
 ```
+
+Once the backend is running, open the web interface at
+[https://127.0.0.1:3000](https://127.0.0.1:3000). The server uses HTTPS with a
+development self-signed certificate, so your browser will display a certificate
+warning the first time. You can also use
+[https://localhost:3000](https://localhost:3000).
+
+If you set a different port with `--http-port`, replace `3000` in the links
+with that port, for example:
+[https://127.0.0.1:8080](https://127.0.0.1:8080).
 
 Creating eBPF maps and attaching the programs requires elevated Linux
 privileges. Running the installed binary without `sudo` can fail with
