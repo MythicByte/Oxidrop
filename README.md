@@ -4,6 +4,14 @@ Oxidrop is a Linux stateful firewall built with eBPF and managed through
 an Axum backend. The eBPF program is compiled and embedded by the backend
 build.
 
+## Design
+
+The following diagram provides an overview of Oxidrop's user-space and
+kernel-space components, including the Axum API, SQLite persistence, Redis
+session cache, eBPF processing, and state maps:
+
+![Oxidrop architecture diagram](assets/Oxidrop_design.jpg)
+
 ## Install
 
 Install the system dependencies on Debian or Ubuntu:
