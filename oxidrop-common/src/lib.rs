@@ -64,8 +64,6 @@ pub struct TokenBucketState {
 pub enum FirewallError {
     /// The packet is too short, and reading the header would go out of bounds.
     OutOfBounds = 0,
-    /// The packet is not IPv4 or IPv6 (e.g., ARP).
-    NotIpTraffic = 1,
     /// The IP protocol is not supported (e.g., not TCP or UDP).
     UnsupportedProtocol = 2,
     /// Rate Limit

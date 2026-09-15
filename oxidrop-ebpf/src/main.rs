@@ -121,9 +121,6 @@ pub fn oxidrop(ctx: XdpContext) -> u32 {
         }
         Err(FirewallError::RateLimited) => xdp_action::XDP_DROP,
         Err(FirewallError::DeniedByPolicy) => xdp_action::XDP_DROP,
-        // errors we ignore
-        // # FIX check later if should be dropped by default or not
-        Err(FirewallError::NotIpTraffic) => xdp_action::XDP_PASS,
         Err(FirewallError::UnsupportedProtocol) => xdp_action::XDP_PASS,
     }
 }
